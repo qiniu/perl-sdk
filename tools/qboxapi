@@ -92,16 +92,11 @@ sub gen_client {
     return QBox::Client->new($auth);
 } # gen_client
 
-my $read_progress = sub {
-    my $params = shift;
-    
-    my $prog_fl = $params->{prog_fl};
-    return undef if (not defined($prog_fl) or $prog_fl eq q{});
-    return undef if (not -r $prog_fl);
+my $read_progress_as_plain_text = sub {
+    my $fh = shift;
 
     my $prog = {};
     my $line = undef;
-    open(my $fh, '<', $prog_fl) or die "$OS_ERROR";
 
     $line = <$fh>;
     if ($line !~ m/^block_count=(\d+)\n/) {
@@ -144,18 +139,35 @@ my $read_progress = sub {
         push @{$prog->{progs}}, $pg;
     } # for
 
+    return $prog;
+};
+
+my $read_progress = sub {
+    my $params = shift;
+    
+    my $prog_fl = $params->{prog_fl};
+    return undef if (not defined($prog_fl) or $prog_fl eq q{});
+    return undef if (not -r $prog_fl);
+
+    open(my $fh, '<', $prog_fl) or die "$OS_ERROR";
+
+    my $prog = undef;
+    if ($prog_fl =~ m/json$/i) {
+        local $/ = undef;
+        my $text = <$fh>;
+        $prog = from_json($text);
+    }
+    else {
+        $prog = $read_progress_as_plain_text->($fh);
+    }
+
     close($fh);
     return $prog;
 };
 
-my $write_progress = sub {
-    my $params = shift;
-    my $prog   = shift;
-
-    my $prog_fl = $params->{prog_fl};
-    return if (not defined($prog_fl) or $prog_fl eq q{});
-
-    open(my $fh, '>', $prog_fl) or die "$OS_ERROR";
+my $write_progress_as_plain_text = sub {
+    my $fh   = shift;
+    my $prog = shift;
 
     printf {$fh} "block_count=%d\n", $prog->{blk_count};
 
@@ -168,6 +180,23 @@ my $write_progress = sub {
         printf {$fh} "rest_size=%d\n", $pg->{rest_size};
         printf {$fh} "ctx=%s\n", ($pg->{ctx} || q{});
     } # foreach
+};
+
+my $write_progress = sub {
+    my $params = shift;
+    my $prog   = shift;
+
+    my $prog_fl = $params->{prog_fl};
+    return if (not defined($prog_fl) or $prog_fl eq q{});
+
+    open(my $fh, '>', $prog_fl) or die "$OS_ERROR";
+
+    if ($prog_fl =~ m/json$/i) {
+        printf {$fh} "%s", to_json($prog, { pretty => 1 });
+    }
+    else {
+        $write_progress_as_plain_text->($fh, $prog);
+    }
 
     close($fh);
 };
