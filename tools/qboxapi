@@ -315,6 +315,20 @@ my $cmds = {
 
         return $ret, $err;
     },
+    'up.query' => sub { # command
+        my $client = shift;
+        my $params = shift;
+
+        my $prog_fl = get_param($params->{prog_fl}, $conf->{prog_fl});
+        my $prog    = $read_progress->({ prog_fl => $prog_fl });
+
+        if (not defined($prog)) {
+            return undef, { code => 299, message => 'No correct progress infomation.' };
+        }
+
+        my $up = QBox::UP->new($client);
+        return $up->query($prog->{checksums});
+    },
     'eu.wmget' => sub { # command
         my $client = shift;
         my $params = shift;
