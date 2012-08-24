@@ -79,15 +79,16 @@ sub read_conf {
 sub gen_client {
     my $params = shift;
 
+    my $acs_key = $params->{acs_key} || $conf->{acs_key} || 'Put your ACCESS KEY here';
+    my $scr_key = $params->{scr_key} || $conf->{scr_key} || 'Put your SECRET KEY here';
+
     my $policy = $params->{policy} || $conf->{policy};
     if (defined($policy) and $policy ne q{}) {
         $policy = QBox::Auth::Policy->new(from_json($policy));
-        my $auth = QBox::Auth::UpToken->new($policy);
+        my $auth = QBox::Auth::UpToken->new($acs_key, $scr_key, $policy);
         return QBox::Client->new($auth);
     }
 
-    my $acs_key = $params->{acs_key} || $conf->{acs_key} || 'Put your ACCESS KEY here';
-    my $scr_key = $params->{scr_key} || $conf->{scr_key} || 'Put your SECRET KEY here';
     my $auth = QBox::Auth::Digest->new($acs_key, $scr_key);
     return QBox::Client->new($auth);
 } # gen_client
