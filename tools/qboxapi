@@ -1,0 +1,218 @@
+#!/usr/bin/env perl
+
+use strict;
+use warnings;
+
+use File::Basename;
+
+use JSON; # external library
+
+use QBox::Auth::Digest;
+use QBox::Auth::UpToken;
+use QBox::Auth::Policy;
+use QBox::Client;
+use QBox::RS;
+use QBox::UP;
+use QBox::EU;
+use QBox::Misc;
+use QBox::ReaderAt::File;
+
+our $conf = undef;
+
+sub get_param {
+    foreach my $p (@_) {
+        if (defined($p)) {
+            return $p;
+        }
+    } # foreach
+    return undef;
+} # get_param
+
+sub get_opts {
+    my $args  = shift;
+    my $opts  = {};
+    my $fixed = [];
+
+    for (my $i = 0; $i < scalar(@$args); ++$i) {
+        my $arg = $args->[$i];
+
+        if ($arg eq '-f') {
+            $opts->{conf} = $args->[$i + 1];
+            ++$i;
+            next;
+        }
+
+        push @$fixed, $arg;
+    } # for
+
+    return $fixed, $opts;
+} # get_opts
+
+sub get_params {
+    my $args = shift;
+    return { map { split('=', $_, 2) } @$args };
+} # get_params
+
+sub read_conf {
+    my $fl = shift;
+
+    if (not defined($fl) or $fl eq q{}) {
+        return {};
+    }
+
+    open(my $fh, '<', $fl) or die "$!";
+    local $/ = undef;
+    my $text = <$fh>;
+    close($fh);
+
+    my $conf = undef;
+    eval {
+        $conf = from_json($text);
+    };
+    if ($@) {
+        return {};
+    }
+    return $conf;
+} # read_conf
+
+sub gen_client {
+    my $params = shift;
+
+    my $policy = $params->{policy} || $conf->{policy};
+    if ($policy and $policy ne q{}) {
+        $policy = QBox::Auth::Policy->new(from_json($policy));
+        my $auth = QBox::Auth::UpToken->new($policy);
+        return QBox::Client->new($auth);
+    }
+
+    my $acs_key = $params->{acs_key} || $conf->{acs_key} || 'Put your ACCESS KEY here';
+    my $scr_key = $params->{scr_key} || $conf->{scr_key} || 'Put your SECRET KEY here';
+    my $auth = QBox::Auth::Digest->new($acs_key, $scr_key);
+    return QBox::Client->new($auth);
+} # gen_client
+
+my $blk_notify = sub {
+    my $params    = shift;
+    my $blk_index = shift;
+    my $checksum  = shift;
+
+    printf "blk_index=%d, checksum=[%s]\n", $blk_index, $checksum->{value};
+
+    my $stop_idx = $params->{stop_idx};
+    print "stop=$stop_idx\n";
+    if (defined($stop_idx) and $blk_index == $stop_idx) {
+        print "Abort uploading block.\n";
+        return 0;
+    }
+    return 1;
+};
+
+my $chk_notify = sub {
+    my $params    = shift;
+    my $blk_index = shift;
+    my $prog      = shift;
+
+    printf "blk_index=%d, uploaded=%d, rest=%d, ctx=[%s]\n",
+        $blk_index, $prog->{offset}, $prog->{rest_size}, $prog->{ctx};
+
+    my $stop_idx = $params->{stop_idx};
+    if (defined($stop_idx) and $blk_index == $stop_idx) {
+        my $stop_size = $params->{stop_size};
+        if (defined($stop_size) and $prog->{offset} >= $stop_size) {
+            print "Abort uploading chunk.\n";
+            return 0;
+        }
+    }
+    return 1;
+};
+
+my $cmds = {
+    'rs.put-auth' => sub { # command
+        my $client = shift;
+        my $params = shift;
+
+        my $rs = QBox::RS->new($client);
+        my $expires_in   = $params->{expires_in} || $conf->{expires_in} || 30;
+        my $callback_url = $params->{callback_url} || $conf->{expires_in};
+        return $rs->put_auth($expires_in, $callback_url);
+    },
+    'rs.resumable-put' => sub { # command
+        my $client = shift;
+        my $params = shift;
+
+        my $rs = QBox::RS->new($client);
+
+        my $file            = $params->{fl}              || $conf->{fl};
+        my $bucket          = $params->{bkt}             || $conf->{bkt}              || 'Bucket';
+        my $key             = $params->{key}             || $conf->{key}              || basename($file);
+        my $mime            = $params->{mime}            || $conf->{mime}             || 'application/octet-stream';
+        my $meta            = $params->{meta}            || $conf->{meta};
+        my $other_params    = $params->{params}          || $conf->{params};
+        my $callback_params = $params->{callback_params} || $conf->{callback_params};
+
+        my $fsize     = (stat($file))[7];
+        my $reader_at = QBox::ReaderAt::File->new($file);
+
+        my $ret  = undef;
+        my $err  = undef;
+        my $prog = undef;
+
+        my $notify_blk = $params->{notify_blk} || $conf->{notify_bld};
+        my $notify_chk = $params->{notify_chk} || $conf->{notify_chk};
+
+        my $notify_params = {};
+        $notify_params->{stop_idx}  = get_param($params->{stop_idx}, $conf->{stop_idx});
+        $notify_params->{stop_size} = get_param($params->{stop_size}, $conf->{stop_size});
+
+        if (defined($notify_params->{stop_size})) {
+            $notify_params->{stop_idx} ||= 0;
+        }
+
+        ($ret, $err, $prog) = $rs->resumale_put(
+            $prog,
+            defined($notify_blk) ? $blk_notify : undef,
+            defined($notify_chk) ? $chk_notify : undef,
+            $notify_params,
+            qbox_make_entry($bucket, $key),
+            $mime,
+            $reader_at,
+            $fsize,
+            $meta,
+            $other_params,
+            $callback_params,
+        );
+
+        return $ret, $err;
+    },
+    'eu.wmget' => sub { # command
+        my $client = shift;
+        my $params = shift;
+        my $eu = QBox::EU->new($client);
+        return $eu->wmget($params->{customer});
+    },
+};
+
+my ($args, $opts) = get_opts(\@ARGV);
+$conf = read_conf($opts->{conf});
+
+my $cmd = shift(@$args);
+
+if (not defined($cmd)) {
+    print "Usage: qboxapi CMD [param=arg, [param=arg, ...]]\n";
+    exit(1);
+}
+
+if (not defined($cmds->{$cmd})) {
+    print "No such command.(cmd=${cmd})\n";
+    exit(1);
+}
+
+my $params = get_params($args);
+my $client = gen_client($params);
+my ($ret, $err) = $cmds->{$cmd}->($client, $params);
+
+$ret ||= {};
+printf "ret=%s\n", to_json($ret, { pretty => 1 });
+printf "code=%d\nmessage=[%s]\n", $err->{code}, $err->{message};
+
+exit 0;
