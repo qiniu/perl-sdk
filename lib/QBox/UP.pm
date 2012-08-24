@@ -306,8 +306,8 @@ sub put {
     # Find next block
     my $blk_index = 0;
     for (my $i = 0; $i < $prog->{blk_count}; ++$i) {
-        my $ctx = $prog->{progs}[$i]{ctx};
-        if (not defined($ctx) or $ctx ne 'end') {
+        my $rest_size = $prog->{progs}[$i]{rest_size};
+        if (defined($rest_size) and $rest_size > 0) {
             $blk_index = $i;
             last;
         }
