@@ -3,6 +3,7 @@
 use strict;
 use warnings;
 
+use English;
 use File::Basename;
 
 use JSON; # external library
@@ -79,7 +80,7 @@ sub gen_client {
     my $params = shift;
 
     my $policy = $params->{policy} || $conf->{policy};
-    if ($policy and $policy ne q{}) {
+    if (defined($policy) and $policy ne q{}) {
         $policy = QBox::Auth::Policy->new(from_json($policy));
         my $auth = QBox::Auth::UpToken->new($policy);
         return QBox::Client->new($auth);
@@ -91,18 +92,120 @@ sub gen_client {
     return QBox::Client->new($auth);
 } # gen_client
 
+my $read_progress = sub {
+    my $params = shift;
+    
+    my $prog_fl = $params->{prog_fl};
+    return undef if (not defined($prog_fl) or $prog_fl eq q{});
+    return undef if (not -r $prog_fl);
+
+    my $prog = {};
+    my $line = undef;
+    open(my $fh, '<', $prog_fl) or die "$OS_ERROR";
+
+    $line = <$fh>;
+    if ($line !~ m/^block_count=(\d+)\n/) {
+        die "Invalid progress file: No block count.";
+    }
+    $prog->{blk_count} = $1;
+
+    $prog->{checksums} = [];
+    for (my $i = 0; $i < $prog->{blk_count}; ++$i) {
+        $line = <$fh>;
+        if ($line !~ m/^checksum=(.*)\n/) {
+            die "Invalid progress file: Invalid checksum.";
+        }
+
+        push @{$prog->{checksums}}, { value => $1 };
+    } # for
+
+    $prog->{progs} = [];
+    for (my $i = 0; $i < $prog->{blk_count}; ++$i) {
+        my $pg = {};
+
+        $line = <$fh>;
+        if ($line !~ m/^offset=(\d+)\n/) {
+            die "Invalid progress file: Invalid offset.";
+        }
+        $pg->{offset} = $1;
+
+        $line = <$fh>;
+        if ($line !~ m/^rest_size=(\d+)\n/) {
+            die "Invalid progress file: Invalid rest size.";
+        }
+        $pg->{rest_size} = $1;
+
+        $line = <$fh>;
+        if ($line !~ m/^ctx=(.*)\n/) {
+            die "Invalid progress file: Invalid context.";
+        }
+        $pg->{ctx} = $1;
+
+        push @{$prog->{progs}}, $pg;
+    } # for
+
+    close($fh);
+    return $prog;
+};
+
+my $write_progress = sub {
+    my $params = shift;
+    my $prog   = shift;
+
+    my $prog_fl = $params->{prog_fl};
+    return if (not defined($prog_fl) or $prog_fl eq q{});
+
+    open(my $fh, '>', $prog_fl) or die "$OS_ERROR";
+
+    printf {$fh} "block_count=%d\n", $prog->{blk_count};
+
+    foreach my $cksum (@{$prog->{checksums}}) {
+        printf {$fh} "checksum=%s\n", ($cksum->{value} || q{});
+    } # foreach
+
+    foreach my $pg (@{$prog->{progs}}) {
+        printf {$fh} "offset=%d\n", $pg->{offset};
+        printf {$fh} "rest_size=%d\n", $pg->{rest_size};
+        printf {$fh} "ctx=%s\n", ($pg->{ctx} || q{});
+    } # foreach
+
+    close($fh);
+};
+
+my $blk_abort = sub {
+    my $params    = shift;
+    my $blk_index = shift;
+    my $checksum  = shift;
+
+    my $stop_idx = $params->{stop_idx};
+    if (defined($stop_idx) and $blk_index == $stop_idx) {
+        print "Abort uploading block(#${stop_idx}).\n";
+        return 0;
+    }
+    return 1;
+};
+
 my $blk_notify = sub {
     my $params    = shift;
     my $blk_index = shift;
     my $checksum  = shift;
 
     printf "blk_index=%d, checksum=[%s]\n", $blk_index, $checksum->{value};
+    $blk_abort->($params, $blk_index, $checksum);
+};
+
+my $chk_abort = sub {
+    my $params    = shift;
+    my $blk_index = shift;
+    my $prog      = shift;
 
     my $stop_idx = $params->{stop_idx};
-    print "stop=$stop_idx\n";
     if (defined($stop_idx) and $blk_index == $stop_idx) {
-        print "Abort uploading block.\n";
-        return 0;
+        my $stop_size = $params->{stop_size};
+        if (defined($stop_size) and $prog->{offset} >= $stop_size) {
+            print "Abort uploading chunk(#$prog->{stop_idx}, \@$prog->{offset}).\n";
+            return 0;
+        }
     }
     return 1;
 };
@@ -114,16 +217,7 @@ my $chk_notify = sub {
 
     printf "blk_index=%d, uploaded=%d, rest=%d, ctx=[%s]\n",
         $blk_index, $prog->{offset}, $prog->{rest_size}, $prog->{ctx};
-
-    my $stop_idx = $params->{stop_idx};
-    if (defined($stop_idx) and $blk_index == $stop_idx) {
-        my $stop_size = $params->{stop_size};
-        if (defined($stop_size) and $prog->{offset} >= $stop_size) {
-            print "Abort uploading chunk.\n";
-            return 0;
-        }
-    }
-    return 1;
+    $chk_abort->($params, $blk_index, $prog);
 };
 
 my $cmds = {
@@ -153,25 +247,26 @@ my $cmds = {
         my $fsize     = (stat($file))[7];
         my $reader_at = QBox::ReaderAt::File->new($file);
 
-        my $ret  = undef;
-        my $err  = undef;
-        my $prog = undef;
-
         my $notify_blk = $params->{notify_blk} || $conf->{notify_bld};
         my $notify_chk = $params->{notify_chk} || $conf->{notify_chk};
 
         my $notify_params = {};
         $notify_params->{stop_idx}  = get_param($params->{stop_idx}, $conf->{stop_idx});
         $notify_params->{stop_size} = get_param($params->{stop_size}, $conf->{stop_size});
+        $notify_params->{prog_fl}   = get_param($params->{prog_fl}, $conf->{prog_fl});
 
         if (defined($notify_params->{stop_size})) {
             $notify_params->{stop_idx} ||= 0;
         }
 
+        my $ret  = undef;
+        my $err  = undef;
+        my $prog = $read_progress->($notify_params);
+
         ($ret, $err, $prog) = $rs->resumale_put(
             $prog,
-            defined($notify_blk) ? $blk_notify : undef,
-            defined($notify_chk) ? $chk_notify : undef,
+            defined($notify_blk) ? $blk_notify : $blk_abort,
+            defined($notify_chk) ? $chk_notify : $chk_abort,
             $notify_params,
             qbox_make_entry($bucket, $key),
             $mime,
@@ -181,6 +276,13 @@ my $cmds = {
             $other_params,
             $callback_params,
         );
+
+        if ($err->{code} != 200) {
+            $write_progress->($notify_params, $prog);
+        }
+        else {
+            unlink($notify_params->{prog_fl});
+        }
 
         return $ret, $err;
     },
