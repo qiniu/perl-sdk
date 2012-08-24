@@ -64,9 +64,13 @@ sub qbox_up_put {
 
 ### package functions
 sub reform_checksums {
-    my $checksums = shift;
-    my $buff = join '', map { qbox_base64_decode_urlsafe($_->{value}) } @{$checksums};
-    my $size = 20 * scalar(@$checksums);
+    my $checksums  = shift;
+    my $grep_valid = shift;
+
+    my $new_checksums = ($grep_valid) ? [grep {$_->{value}} @{$checksums}] : $checksums;
+
+    my $buff = join '', map { qbox_base64_decode_urlsafe($_->{value} || q{}) } @{$new_checksums};
+    my $size = 20 * scalar(@{$new_checksums});
     return $buff, $size;
 } # reform_checksums
 
@@ -354,7 +358,7 @@ sub query {
     my $checksums = shift;
 
     my $url = "$self->{hosts}{up_host}/query";
-    my ($cksum_buff, $cksum_size) = reform_checksums($checksums);
+    my ($cksum_buff, $cksum_size) = reform_checksums($checksums, q{grep valid});
     my ($ret, $err) = $self->{client}->call_with_buffer(
         $url,
         $cksum_buff,
