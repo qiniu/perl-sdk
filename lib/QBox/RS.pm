@@ -170,8 +170,12 @@ sub put_file {
     my $file        = shift || q{};
     my $custom_meta = shift;
 
-    die 'Invalid file'     if ($file eq q{});
-    die 'Cannot read file' if (not -r $file);
+    if ($file eq q{}) {
+        return undef, { code => 499, message => 'Invalid file' };
+    }
+    if (not -r $file) {
+        return undef, { code => 499, message => 'Cannot read file' };
+    }
 
     my $fsize  = (stat($file))[7];
     my $reader = QBox::Reader::File->new({ file => $file });

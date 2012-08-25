@@ -42,9 +42,7 @@ sub new {
     if ($args->{file} and $args->{file} ne q{}) {
         my $file  = $args->{file};
 
-        my $fh = undef;
-
-        open($fh, '<', $file) or die "$OS_ERROR";
+        open(my $fh, '<', $file) or return undef, { code => 499, message => "$OS_ERROR" };
 
         $self->{fh}   = $fh;
         $self->{read} = $qbox_read_part;

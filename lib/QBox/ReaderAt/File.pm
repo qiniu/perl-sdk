@@ -30,8 +30,10 @@ sub new {
 
     my $fh = undef;
 
-    die 'Need filename' unless defined($file) && $file ne q{};
-    open($fh, '<', $file) or die "$OS_ERROR";
+    if (not defined($file) || $file eq q{}) {
+        return undef, { code => 499, message => 'Need filename' };
+    }
+    open($fh, '<', $file) or return undef, { code => 499, message => "$OS_ERROR" };
 
     my $self = {};
     $self->{fh}      = $fh;
