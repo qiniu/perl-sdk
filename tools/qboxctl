@@ -148,7 +148,7 @@ my $rs_get_rs_params = sub {
 
     $rs_params->{src_file}        = $params->{src}             || $conf->{src};
     $rs_params->{bucket}          = $params->{bkt}             || $conf->{bkt}              || 'Bucket';
-    $rs_params->{key}             = $params->{key}             || $conf->{key}              || basename($rs_params->{src_file});
+    $rs_params->{key}             = $params->{key}             || $conf->{key}              || basename($rs_params->{src_file} || q{});
     $rs_params->{mime}            = $params->{mime}            || $conf->{mime}             || 'application/octet-stream';
     $rs_params->{meta}            = $params->{meta}            || $conf->{meta};
     $rs_params->{other_params}    = $params->{params}          || $conf->{params};
@@ -156,6 +156,7 @@ my $rs_get_rs_params = sub {
 
     $rs_params->{attr}            = $params->{attr}            || $conf->{attr};
     $rs_params->{base}            = $params->{base}            || $conf->{base};
+    $rs_params->{domain}          = $params->{domain}          || $conf->{domain};
 
     return $rs_params;
 };
@@ -354,6 +355,20 @@ $cmds = {
         my $rs_params = $rs_get_rs_params->($params);
         my $rs = QBox::RS->new($client, $hosts);
         return $rs->stat($rs_params->{bucket}, $rs_params->{key});
+    },
+    'rs.publish' => sub { # command
+        my ($client, $params, $hosts) = @_;
+
+        my $rs_params = $rs_get_rs_params->($params);
+        my $rs = QBox::RS->new($client, $hosts);
+        return $rs->publish($rs_params->{bucket}, $rs_params->{domain});
+    },
+    'rs.unpublish' => sub { # command
+        my ($client, $params, $hosts) = @_;
+
+        my $rs_params = $rs_get_rs_params->($params);
+        my $rs = QBox::RS->new($client, $hosts);
+        return $rs->unpublish($rs_params->{domain});
     },
     'rs.put-auth' => sub { # command
         my ($client, $params, $hosts) = @_;
