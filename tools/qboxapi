@@ -54,6 +54,53 @@ sub get_params {
     return { map { split('=', $_, 2) } @$args };
 } # get_params
 
+sub grab_hash {
+    my $to   = shift;
+    my $from = shift;
+    my $keys = shift || [keys(%$to)];
+
+    foreach my $key (@$keys) {
+        if (exists($from->{$key})) {
+            $to->{$key} = $from->{$key};
+        }
+    } # foreach
+
+    return $to;
+} # grab_hash
+
+sub get_json {
+    my $text = shift;
+    my $json = undef;
+    
+    if (-r $text) {
+        open(my $fh, '<', $text) or die "$OS_ERROR";
+        local $INPUT_RECORD_SEPARATOR = undef;
+        $text = <$fh>;
+        close($fh);
+    }
+
+    eval {
+        $json = from_json($text);
+    };
+
+    if ($EVAL_ERROR) {
+        return {};
+    }
+
+    return $json;
+} # get_json
+
+sub get_hosts {
+    my $params = shift;
+    my $hosts  = {};
+
+    $hosts->{io_host} = get_param($params->{io_host}, $conf->{io_host});
+    $hosts->{up_host} = get_param($params->{up_host}, $conf->{up_host});
+    $hosts->{rs_host} = get_param($params->{rs_host}, $conf->{rs_host});
+
+    return $hosts;
+} # get_hosts
+
 sub read_conf {
     my $fl = shift;
 
@@ -252,19 +299,16 @@ my $chk_notify = sub {
 
 my $cmds = {
     'rs.put-auth' => sub { # command
-        my $client = shift;
-        my $params = shift;
+        my ($client, $params, $hosts) = @_;
 
-        my $rs = QBox::RS->new($client);
+        my $rs = QBox::RS->new($client, $hosts);
         my $expires_in   = $params->{expires_in} || $conf->{expires_in} || 30;
         my $callback_url = $params->{callback_url} || $conf->{expires_in};
+
         return $rs->put_auth($expires_in, $callback_url);
     },
     'rs.resumable-put' => sub { # command
-        my $client = shift;
-        my $params = shift;
-
-        my $rs = QBox::RS->new($client);
+        my ($client, $params, $hosts) = @_;
 
         my $file            = $params->{fl}              || $conf->{fl};
         my $bucket          = $params->{bkt}             || $conf->{bkt}              || 'Bucket';
@@ -293,6 +337,7 @@ my $cmds = {
         my $err  = undef;
         my $prog = $read_progress->($notify_params);
 
+        my $rs = QBox::RS->new($client, $hosts);
         ($ret, $err, $prog) = $rs->resumale_put(
             $prog,
             defined($notify_blk) ? $blk_notify : $blk_abort,
@@ -317,8 +362,7 @@ my $cmds = {
         return $ret, $err;
     },
     'up.query' => sub { # command
-        my $client = shift;
-        my $params = shift;
+        my ($client, $params, $hosts) = @_;
 
         my $prog_fl = get_param($params->{prog_fl}, $conf->{prog_fl});
         my $prog    = $read_progress->({ prog_fl => $prog_fl });
@@ -327,14 +371,28 @@ my $cmds = {
             return undef, { code => 299, message => 'No correct progress infomation.' };
         }
 
-        my $up = QBox::UP->new($client);
+        my $up = QBox::UP->new($client, $hosts);
         return $up->query($prog->{checksums});
     },
     'eu.wmget' => sub { # command
-        my $client = shift;
-        my $params = shift;
-        my $eu = QBox::EU->new($client);
+        my ($client, $params, $hosts) = @_;
+
+        my $eu = QBox::EU->new($client, $hosts);
         return $eu->wmget($params->{customer});
+    },
+    'eu.wmset' => sub { # command
+        my ($client, $params, $hosts) = @_;
+
+        my $settings = {};
+        my $wms      = get_param($params->{wms}, $conf->{wms});
+        my $names    = QBox::EU::wm_setting_names();
+
+        grab_hash($settings, $conf, $names);
+        grab_hash($settings, get_json($wms), $names);
+        grab_hash($settings, $params, $names);
+
+        my $eu = QBox::EU->new($client, $hosts);
+        return $eu->wmset($settings);
     },
 };
 
@@ -344,7 +402,7 @@ $conf = read_conf($opts->{conf});
 my $cmd = shift(@$args);
 
 if (not defined($cmd)) {
-    print "Usage: qboxapi CMD [param=arg, [param=arg, ...]]\n";
+    print "Usage: qboxapi CMD [PARAM=ARG [PARAM=ARG [...]]]\n";
     exit(1);
 }
 
@@ -354,8 +412,9 @@ if (not defined($cmds->{$cmd})) {
 }
 
 my $params = get_params($args);
+my $hosts  = get_hosts($params);
 my $client = gen_client($params);
-my ($ret, $err) = $cmds->{$cmd}->($client, $params);
+my ($ret, $err) = $cmds->{$cmd}->($client, $params, $hosts);
 
 $ret ||= {};
 printf "ret=%s\n", to_json($ret, { pretty => 1 });
