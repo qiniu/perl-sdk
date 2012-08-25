@@ -44,6 +44,10 @@ my $wm_settings = {
     dy        => 10,
 };
 
+sub wm_setting_names {
+    return [keys(%$wm_settings)];
+} # wm_setting_names 
+
 sub wmset {
     my $self     = shift;
     my $settings = shift;
