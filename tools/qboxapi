@@ -297,7 +297,25 @@ my $chk_notify = sub {
     $chk_abort->($params, $blk_index, $prog);
 };
 
-my $cmds = {
+### eu
+my $eu_gen_settings = sub {
+    my $params   = shift;
+    my $settings = shift || {};
+
+    my $wms   = get_param($params->{wms}, $conf->{wms});
+    my $names = QBox::EU::wm_setting_names();
+
+    grab_hash($settings, $conf, $names);
+    if (defined($wms) and $wms ne q{}) {
+        grab_hash($settings, get_json($wms), $names);
+    }
+    grab_hash($settings, $params, $names);
+
+    return $settings;
+};
+
+my $cmds = undef;
+$cmds = {
     'rs.put-auth' => sub { # command
         my ($client, $params, $hosts) = @_;
 
@@ -377,20 +395,26 @@ my $cmds = {
     'eu.wmget' => sub { # command
         my ($client, $params, $hosts) = @_;
 
+        my $customer = get_param($params->{customer}, $conf->{customer});
         my $eu = QBox::EU->new($client, $hosts);
-        return $eu->wmget($params->{customer});
+        return $eu->wmget($customer);
     },
     'eu.wmset' => sub { # command
         my ($client, $params, $hosts) = @_;
 
-        my $settings = {};
-        my $wms      = get_param($params->{wms}, $conf->{wms});
-        my $names    = QBox::EU::wm_setting_names();
+        my $settings = $eu_gen_settings->($params);
+        my $eu = QBox::EU->new($client, $hosts);
+        return $eu->wmset($settings);
+    },
+    'eu.wmset-any' => sub { # command extended
+        my ($client, $params, $hosts) = @_;
 
-        grab_hash($settings, $conf, $names);
-        grab_hash($settings, get_json($wms), $names);
-        grab_hash($settings, $params, $names);
+        my ($settings, $err) = $cmds->{'eu.wmget'}->($client, $params, $hosts);
+        if ($err->{code} != 200) {
+            return undef, $err;
+        }
 
+        $settings = $eu_gen_settings->($params, $settings);
         my $eu = QBox::EU->new($client, $hosts);
         return $eu->wmset($settings);
     },
