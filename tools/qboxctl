@@ -441,6 +441,20 @@ $cmds = {
 
         return $ret, $err;
     },
+    'rs.delete' => sub { # command
+        my ($client, $params, $hosts) = @_;
+
+        my $rs_params = $rs_get_rs_params->($params);
+        my $rs = QBox::RS->new($client, $hosts);
+        return $rs->delete($rs_params->{bucket}, $rs_params->{key});
+    },
+    'rs.drop' => sub { # command
+        my ($client, $params, $hosts) = @_;
+
+        my $rs_params = $rs_get_rs_params->($params);
+        my $rs = QBox::RS->new($client, $hosts);
+        return $rs->drop($rs_params->{bucket});
+    },
     'up.query' => sub { # command
         my ($client, $params, $hosts) = @_;
 
