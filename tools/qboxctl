@@ -154,6 +154,9 @@ my $rs_get_rs_params = sub {
     $rs_params->{other_params}    = $params->{params}          || $conf->{params};
     $rs_params->{callback_params} = $params->{callback_params} || $conf->{callback_params};
 
+    $rs_params->{attr}            = $params->{attr}            || $conf->{attr};
+    $rs_params->{base}            = $params->{base}            || $conf->{base};
+
     return $rs_params;
 };
 
@@ -333,11 +336,22 @@ my $eu_gen_settings = sub {
 
 my $cmds = undef;
 $cmds = {
+    'rs.get' => sub { # command
+        my ($client, $params, $hosts) = @_;
+
+        my $rs_params = $rs_get_rs_params->($params);
+        my $rs = QBox::RS->new($client, $hosts);
+        return $rs->get(
+            $rs_params->{bucket},
+            $rs_params->{key},
+            $rs_params->{attr},
+            $rs_params->{base},
+        );
+    },
     'rs.stat' => sub { # command
         my ($client, $params, $hosts) = @_;
 
         my $rs_params = $rs_get_rs_params->($params);
-
         my $rs = QBox::RS->new($client, $hosts);
         return $rs->stat($rs_params->{bucket}, $rs_params->{key});
     },
