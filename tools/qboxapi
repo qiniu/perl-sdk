@@ -140,6 +140,23 @@ sub gen_client {
     return QBox::Client->new($auth);
 } # gen_client
 
+### rs
+my $rs_get_upload_params = sub {
+    my $params = shift;
+
+    my $up_params = {};
+
+    $up_params->{src_file}        = $params->{src}             || $conf->{src};
+    $up_params->{bucket}          = $params->{bkt}             || $conf->{bkt}              || 'Bucket';
+    $up_params->{key}             = $params->{key}             || $conf->{key}              || basename($up_params->{src_file});
+    $up_params->{mime}            = $params->{mime}            || $conf->{mime}             || 'application/octet-stream';
+    $up_params->{meta}            = $params->{meta}            || $conf->{meta};
+    $up_params->{other_params}    = $params->{params}          || $conf->{params};
+    $up_params->{callback_params} = $params->{callback_params} || $conf->{callback_params};
+
+    return $up_params;
+};
+
 my $read_progress_as_plain_text = sub {
     my $fh = shift;
 
@@ -325,19 +342,27 @@ $cmds = {
 
         return $rs->put_auth($expires_in, $callback_url);
     },
+    'rs.put-file' => sub { # command
+        my ($client, $params, $hosts) = @_;
+
+        my $up_params = $rs_get_upload_params->($params);
+
+        my $rs = QBox::RS->new($client, $hosts);
+        return $rs->put_file(
+            $up_params->{bucket},
+            $up_params->{key},
+            $up_params->{mime_type},
+            $up_params->{src_file},
+            $up_params->{meta},
+        );
+    },
     'rs.resumable-put' => sub { # command
         my ($client, $params, $hosts) = @_;
 
-        my $file            = $params->{fl}              || $conf->{fl};
-        my $bucket          = $params->{bkt}             || $conf->{bkt}              || 'Bucket';
-        my $key             = $params->{key}             || $conf->{key}              || basename($file);
-        my $mime            = $params->{mime}            || $conf->{mime}             || 'application/octet-stream';
-        my $meta            = $params->{meta}            || $conf->{meta};
-        my $other_params    = $params->{params}          || $conf->{params};
-        my $callback_params = $params->{callback_params} || $conf->{callback_params};
+        my $up_params = $rs_get_upload_params->($params);
 
-        my $fsize     = (stat($file))[7];
-        my $reader_at = QBox::ReaderAt::File->new($file);
+        my $fsize     = (stat($up_params->{src_file}))[7];
+        my $reader_at = QBox::ReaderAt::File->new($up_params->{src_file});
 
         my $notify_blk = $params->{notify_blk} || $conf->{notify_bld};
         my $notify_chk = $params->{notify_chk} || $conf->{notify_chk};
@@ -361,19 +386,19 @@ $cmds = {
             defined($notify_blk) ? $blk_notify : $blk_abort,
             defined($notify_chk) ? $chk_notify : $chk_abort,
             $notify_params,
-            qbox_make_entry($bucket, $key),
-            $mime,
+            qbox_make_entry($up_params->{bucket}, $up_params->{key}),
+            $up_params->{mime},
             $reader_at,
             $fsize,
-            $meta,
-            $other_params,
-            $callback_params,
+            $up_params->{meta},
+            $up_params->{other_params},
+            $up_params->{callback_params},
         );
 
         if ($err->{code} != 200) {
             $write_progress->($notify_params, $prog);
         }
-        else {
+        elsif ($notify_params->{prog_fl} and -w $notify_params->{prog_fl}) {
             unlink($notify_params->{prog_fl});
         }
 
