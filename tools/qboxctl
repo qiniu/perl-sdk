@@ -451,7 +451,8 @@ $conf = read_conf($opts->{conf});
 my $cmd = shift(@$args);
 
 if (not defined($cmd)) {
-    print "Usage: qboxapi CMD [PARAM=ARG [PARAM=ARG [...]]]\n";
+    my $prog_nm = basename($0);
+    print "Usage: ${prog_nm} CMD [PARAM=ARG [PARAM=ARG [...]]]\n";
     exit(1);
 }
 
