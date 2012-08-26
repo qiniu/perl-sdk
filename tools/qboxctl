@@ -18,7 +18,9 @@ use QBox::EU;
 use QBox::Misc;
 use QBox::ReaderAt::File;
 
-our $conf = undef;
+my $conf   = undef;
+my $debug  = undef;
+my $pretty = undef;
 
 sub get_param {
     foreach my $p (@_) {
@@ -38,8 +40,19 @@ sub get_opts {
         my $arg = $args->[$i];
 
         if ($arg eq '-f') {
-            $opts->{conf} = $args->[$i + 1];
+            $opts->{conf} ||= [];
+            push @{$opts->{conf}}, $args->[$i + 1];
             ++$i;
+            next;
+        }
+
+        if ($arg eq '-d') {
+            $debug = 1;
+            next;
+        }
+
+        if ($arg eq '-P') {
+            $pretty = 1;
             next;
         }
 
@@ -54,7 +67,7 @@ sub get_params {
     return { map { split('=', $_, 2) } @$args };
 } # get_params
 
-sub grab_hash {
+sub merge_hash {
     my $to   = shift;
     my $from = shift;
     my $keys = shift || [keys(%$to)];
@@ -66,7 +79,7 @@ sub grab_hash {
     } # foreach
 
     return $to;
-} # grab_hash
+} # merge_hash
 
 sub get_json {
     my $text = shift;
@@ -102,24 +115,26 @@ sub get_hosts {
 } # get_hosts
 
 sub read_conf {
-    my $fl = shift;
+    my $fls = shift;
 
-    if (not defined($fl) or $fl eq q{}) {
-        return {};
-    }
+    my $conf = {};
+    foreach my $fl (@$fls) {
+        next if (not defined($fl) or $fl eq q{});
 
-    open(my $fh, '<', $fl) or die "$!";
-    local $/ = undef;
-    my $text = <$fh>;
-    close($fh);
+        open(my $fh, '<', $fl) or die "$!";
+        local $/ = undef;
+        my $text = <$fh>;
+        close($fh);
 
-    my $conf = undef;
-    eval {
-        $conf = from_json($text);
-    };
-    if ($@) {
-        return {};
-    }
+        my $new_conf = undef;
+        eval {
+            $new_conf = from_json($text);
+        };
+        next if ($@);
+
+        merge_hash($conf, $new_conf, [keys(%$new_conf)]);
+    } # foreach
+
     return $conf;
 } # read_conf
 
@@ -326,11 +341,11 @@ my $eu_gen_settings = sub {
     my $wms   = get_param($params->{wms}, $conf->{wms});
     my $names = QBox::EU::wm_setting_names();
 
-    grab_hash($settings, $conf, $names);
+    merge_hash($settings, $conf, $names);
     if (defined($wms) and $wms ne q{}) {
-        grab_hash($settings, get_json($wms), $names);
+        merge_hash($settings, get_json($wms), $names);
     }
-    grab_hash($settings, $params, $names);
+    merge_hash($settings, $params, $names);
 
     return $settings;
 };
@@ -512,13 +527,30 @@ if (not defined($cmds->{$cmd})) {
     exit(1);
 }
 
+if ($debug) {
+    QBox::Debug::set_callback(sub {
+        my $data    = shift;
+        my $title   = shift;
+        my $context = shift;
+
+        my $type = ref($context);
+        if ($type eq 'HASH') {
+            printf "${title}=%s\n", to_json($context, { pretty => $pretty });
+        }
+        else {
+            print "${title}=[${context}]\n";
+        }
+    });
+}
+
 my $params = get_params($args);
 my $hosts  = get_hosts($params);
 my $client = gen_client($params);
+
 my ($ret, $err) = $cmds->{$cmd}->($client, $params, $hosts);
 
 $ret ||= {};
-printf "ret=%s\n", to_json($ret, { pretty => 1 });
+printf "ret=%s\n", to_json($ret, { pretty => $pretty });
 printf "code=%d\nmessage=[%s]\n", $err->{code}, $err->{message};
 
 exit 0;
