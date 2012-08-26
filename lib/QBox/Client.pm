@@ -18,6 +18,8 @@ use JSON;                            # external library
 use Net::Curl::Easy qw(:constants);  # external library
 use Net::Curl::Form qw(:constants);
 
+use QBox::Debug;
+
 our @ISA = qw(Exporter);
 our @EXPORT = qw(
     qbox_client_init
@@ -57,7 +59,9 @@ my $qbox_client_call_pre = sub {
 
     my $curl = Net::Curl::Easy->new();
 
-    $curl->setopt(CURLOPT_CUSTOMREQUEST,  "POST");
+    QBox::Debug::callback('url', $url);
+
+    $curl->setopt(CURLOPT_CUSTOMREQUEST,  'POST');
     $curl->setopt(CURLOPT_SSL_VERIFYPEER, 0);
     $curl->setopt(CURLOPT_SSL_VERIFYHOST, 0);
     $curl->setopt(CURLOPT_URL,            $url);
@@ -76,7 +80,7 @@ my $qbox_client_call_core = sub {
     my $curl = shift;
     my $opts = shift || {};
 
-    my $resp = "";
+    my $resp = '';
 
     $curl->setopt(CURLOPT_WRITEFUNCTION, $qbox_client_write_data);
     $curl->setopt(CURLOPT_WRITEDATA, \$resp);
