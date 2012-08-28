@@ -31,7 +31,7 @@ sub new {
     my $fh = undef;
 
     if (not defined($file) || $file eq q{}) {
-        return undef, { code => 499, message => 'Need filename' };
+        return undef;
     }
     open($fh, '<', $file) or return undef, { code => 499, message => "$OS_ERROR" };
 

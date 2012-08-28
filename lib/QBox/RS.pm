@@ -139,10 +139,15 @@ sub put {
     my $self        = shift;
     my $bucket      = shift;
     my $key         = shift;
-    my $mime_type   = shift || "application/octet-stream";
+    my $mime_type   = shift;
     my $reader      = shift;
     my $fsize       = shift;
     my $custom_meta = shift;
+
+    $bucket      = defined($bucket)      ? "$bucket"      : q{};
+    $key         = defined($key)         ? "$key"         : q{};
+    $mime_type   = defined($mime_type)   ? "$mime_type"   : q{application/octet-stream};
+    $custom_meta = defined($custom_meta) ? "$custom_meta" : q{};
 
     my $encoded_entry = qbox_base64_encode_urlsafe(qbox_make_entry($bucket, $key));
     $mime_type = qbox_base64_encode_urlsafe($mime_type);
@@ -167,12 +172,19 @@ sub put_file {
     my $bucket      = shift;
     my $key         = shift;
     my $mime_type   = shift;
-    my $file        = shift || q{};
+    my $file        = shift;
     my $custom_meta = shift;
 
-    if ($file eq q{}) {
+    if (not defined($file)) {
         return undef, { code => 499, message => 'Invalid file' };
     }
+
+    $bucket      = defined($bucket)      ? "$bucket"      : q{};
+    $key         = defined($key)         ? "$key"         : q{};
+    $mime_type   = defined($mime_type)   ? "$mime_type"   : q{};
+    $file        = "$file";
+    $custom_meta = defined($custom_meta) ? "$custom_meta" : q{};
+
     if (not -r $file) {
         return undef, { code => 499, message => 'Cannot read file' };
     }
