@@ -8,6 +8,8 @@ use File::Basename;
 
 use JSON; # external library
 
+use QBox::Auth::Password;
+use QBox::Auth::Token;
 use QBox::Auth::Digest;
 use QBox::Auth::UpToken;
 use QBox::Auth::Policy;
@@ -15,6 +17,7 @@ use QBox::Client;
 use QBox::RS;
 use QBox::UP;
 use QBox::EU;
+use QBox::UC;
 use QBox::Misc;
 use QBox::ReaderAt::File;
 
@@ -107,9 +110,12 @@ sub get_hosts {
     my $params = shift;
     my $hosts  = {};
 
+    $hosts->{ac_host} = get_param($params->{ac_host}, $conf->{ac_host});
     $hosts->{io_host} = get_param($params->{io_host}, $conf->{io_host});
     $hosts->{up_host} = get_param($params->{up_host}, $conf->{up_host});
     $hosts->{rs_host} = get_param($params->{rs_host}, $conf->{rs_host});
+    $hosts->{eu_host} = get_param($params->{eu_host}, $conf->{eu_host});
+    $hosts->{uc_host} = get_param($params->{uc_host}, $conf->{uc_host});
 
     return $hosts;
 } # get_hosts
@@ -140,6 +146,18 @@ sub read_conf {
 
 sub gen_client {
     my $params = shift;
+    my $hosts  = shift;
+
+    my $client_id     = $params->{client_id}     || $conf->{client_id};
+    my $client_secret = $params->{client_secret} || $conf->{client_secret};
+    my $username      = $params->{username}      || $conf->{username};
+    my $password      = $params->{password}      || $conf->{password};
+
+    if (defined($username) and defined($password)) {
+        my $token = QBox::Auth::Token->new($hosts, $client_id, $client_secret);
+        my $auth = QBox::Auth::Password->new($token, $username, $password);
+        return QBox::Client->new($auth);
+    }
 
     my $acs_key = $params->{acs_key} || $conf->{acs_key} || 'Put your ACCESS KEY here';
     my $scr_key = $params->{scr_key} || $conf->{scr_key} || 'Put your SECRET KEY here';
@@ -509,6 +527,31 @@ $cmds = {
         my $eu = QBox::EU->new($client, $hosts);
         return $eu->wmset($settings);
     },
+    'uc.app-info' => sub { # command
+        my ($client, $params, $hosts) = @_;
+
+        my $app = $params->{app} || $conf->{app};
+
+        my $uc = QBox::UC->new($client, $hosts);
+        return $uc->app_info($app);
+    },
+    'uc.new-access' => sub { # command
+        my ($client, $params, $hosts) = @_;
+
+        my $app = $params->{app} || $conf->{app};
+
+        my $uc = QBox::UC->new($client, $hosts);
+        return $uc->new_access($app);
+    },
+    'uc.delete-access' => sub { # command
+        my ($client, $params, $hosts) = @_;
+
+        my $app     = $params->{app}     || $conf->{app};
+        my $acs_key = $params->{acs_key} || $conf->{acs_key};
+
+        my $uc = QBox::UC->new($client, $hosts);
+        return $uc->delete_access($app, $acs_key);
+    },
 };
 
 my ($args, $opts) = get_opts(\@ARGV);
@@ -545,7 +588,7 @@ if ($debug) {
 
 my $params = get_params($args);
 my $hosts  = get_hosts($params);
-my $client = gen_client($params);
+my $client = gen_client($params, $hosts);
 
 my ($ret, $err) = $cmds->{$cmd}->($client, $params, $hosts);
 
