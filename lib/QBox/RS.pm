@@ -226,7 +226,7 @@ sub resumale_put {
 
     $prog ||= QBox::UP::new_progress($fsize);
 
-    my $up = QBox::UP->new($self->{client});
+    my $up = QBox::UP->new($self->{client}, $self->{hosts});
     my ($ret, $err) = $up->put($reader_at, $fsize, $prog, $blk_notify, $chk_notify, $notify_params);
     if ($err->{code} != 200) {
         return $ret, $err, $prog;
