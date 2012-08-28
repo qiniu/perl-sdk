@@ -586,7 +586,13 @@ if ($debug) {
     });
 }
 
-my $params = get_params($args);
+my $ori_params = get_params($args);
+my $params = {};
+if (exists($conf->{params}) and ref($conf->{params}) eq 'HASH') {
+    merge_hash($params, $conf->{params}, [keys(%{$conf->{params}})]);
+}
+merge_hash($params, $ori_params, [keys(%$ori_params)]);
+
 my $hosts  = get_hosts($params);
 my $client = gen_client($params, $hosts);
 
