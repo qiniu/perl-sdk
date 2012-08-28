@@ -28,7 +28,6 @@ our @EXPORT = qw(
 );
 
 sub qbox_curl_call_pre {
-    my $self    = shift;
     my $url     = shift;
     my $headers = shift;
 

@@ -87,7 +87,6 @@ sub call {
     my $opts         = shift;
 
     my $curl = qbox_curl_call_pre(
-        $self,
         $url,
         $qbox_client_gen_headers->($self, $url)
     );
@@ -110,7 +109,7 @@ sub call_with_binary {
         "Content-Length: ${body_len}",
     ]);
 
-    my $curl = qbox_curl_call_pre($self, $url, $headers);
+    my $curl = qbox_curl_call_pre($url, $headers);
 
     $curl->setopt(CURLOPT_POST,         1);
     $curl->setopt(CURLOPT_INFILESIZE,   $body_len);
@@ -137,7 +136,7 @@ sub call_with_buffer {
         "Content-Length: ${body_len}",
     ]);
 
-    my $curl = qbox_curl_call_pre($self, $url, $headers);
+    my $curl = qbox_curl_call_pre($url, $headers);
 
     $curl->setopt(CURLOPT_POST,          1);
     $curl->setopt(CURLOPT_POSTFIELDSIZE, $body_len);
@@ -159,7 +158,6 @@ sub call_with_form {
     }
 
     my $curl = qbox_curl_call_pre(
-        $self,
         $url,
         $qbox_client_gen_headers->($self, $url)
     );
