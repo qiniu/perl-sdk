@@ -64,7 +64,7 @@ sub wmset {
     } # foreach
 
     my $url = "$self->{hosts}{eu_host}/wmset";
-    return $self->{client}->call_with_form($url, $new_settings);
+    return $self->{client}->call_with_multipart_form($url, $new_settings);
 } # wmset
 
 sub wmget {
@@ -81,7 +81,7 @@ sub wmget {
     my $err = undef;
 
     if (scalar(keys(%$query)) > 0) {
-        ($ret, $err) = $self->{client}->call_with_form($url, $query);
+        ($ret, $err) = $self->{client}->call_with_multipart_form($url, $query);
     }
     else {
         ($ret, $err) = $self->{client}->call($url);

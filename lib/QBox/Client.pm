@@ -28,6 +28,7 @@ our @EXPORT = qw(
     qbox_client_call_with_binary
     qbox_client_call_with_buffer
     qbox_client_call_with_form
+    qbox_client_call_with_multipart_form
 );
 
 ### procedures
@@ -45,8 +46,9 @@ my $qbox_client_gen_headers = sub {
         if ($auth_type eq 'HASH' and defined($auth->{gen_headers})) {
             $new_headers = $auth->{gen_headers}($auth, $url);
         }
-
-        $new_headers = $auth->gen_headers($url);
+        else {
+            $new_headers = $auth->gen_headers($url);
+        }
     }
 
     push @{$headers}, @{$new_headers} if defined($new_headers);
@@ -72,6 +74,10 @@ sub qbox_client_call_with_buffer {
 sub qbox_client_call_with_form {
     return &call_with_form;
 } # qbox_client_call_with_form
+
+sub qbox_client_call_with_multipart_form {
+    return &call_with_multipart_form;
+} # qbox_client_call_with_multipart_form
 
 ### for OOP
 sub new {
@@ -115,7 +121,6 @@ sub call_with_binary {
     $curl->setopt(CURLOPT_INFILESIZE,   $body_len);
     $curl->setopt(CURLOPT_READFUNCTION, $body->{read});
     $curl->setopt(CURLOPT_READDATA,     $body->{uservar});
-    $curl->setopt(CURLOPT_HTTPHEADER,   $headers);
 
     return qbox_curl_call_core($curl, $opts);
 } # call_with_binary
@@ -141,7 +146,6 @@ sub call_with_buffer {
     $curl->setopt(CURLOPT_POST,          1);
     $curl->setopt(CURLOPT_POSTFIELDSIZE, $body_len);
     $curl->setopt(CURLOPT_POSTFIELDS,    $body);
-    $curl->setopt(CURLOPT_HTTPHEADER,    $headers);
 
     return qbox_curl_call_core($curl, $opts);
 } # call_with_buffer
@@ -163,10 +167,32 @@ sub call_with_form {
     );
 
     my $form = qbox_curl_make_form($body);
-    $curl->setopt(CURLOPT_HTTPPOST, $form);
+    $curl->setopt(CURLOPT_POSTFIELDS, $form);
 
     return qbox_curl_call_core($curl, $opts);
 } # call_with_form
+
+sub call_with_multipart_form {
+    my $self         = shift;
+    my $url          = shift;
+    my $body         = shift;
+    my $body_len     = shift;
+    my $opts         = shift;
+
+    if (ref($body) ne q{HASH}) {
+        return undef, { code => 400, message => 'Invalid form body' };
+    }
+
+    my $curl = qbox_curl_call_pre(
+        $url,
+        $qbox_client_gen_headers->($self, $url)
+    );
+
+    my $form = qbox_curl_make_multipart_form($body);
+    $curl->setopt(CURLOPT_HTTPPOST, $form);
+
+    return qbox_curl_call_core($curl, $opts);
+} # call_with_multipart_form
 
 1;
 

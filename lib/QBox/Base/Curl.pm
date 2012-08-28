@@ -15,6 +15,7 @@ use warnings;
 use English;
 
 use JSON;                            # external library
+use URI::Escape;                     # external library
 use Net::Curl::Easy qw(:constants);  # external library
 use Net::Curl::Form qw(:constants);  # external library
 
@@ -25,6 +26,7 @@ our @EXPORT = qw(
     qbox_curl_call_pre
     qbox_curl_call_core
     qbox_curl_make_form 
+    qbox_curl_make_multipart_form 
 );
 
 sub qbox_curl_call_pre {
@@ -39,7 +41,10 @@ sub qbox_curl_call_pre {
     $curl->setopt(CURLOPT_SSL_VERIFYPEER, 0);
     $curl->setopt(CURLOPT_SSL_VERIFYHOST, 0);
     $curl->setopt(CURLOPT_URL,            $url);
-    $curl->setopt(CURLOPT_HTTPHEADER,     $headers);
+
+    if (ref($headers) eq 'ARRAY') {
+        $curl->setopt(CURLOPT_HTTPHEADER, $headers);
+    }
 
     return $curl;
 } # qbox_curl_call_pre
@@ -96,6 +101,11 @@ sub qbox_curl_call_core {
 } # qbox_curl_call_core 
 
 sub qbox_curl_make_form {
+    my $query = shift;
+    return join '&', map { sprintf("%s=%s", $_, uri_escape($query->{$_})) } keys(%$query);
+} # qbox_curl_make_form
+
+sub qbox_curl_make_multipart_form {
     my $fields      = shift;
     my $file_fields = shift;
 
@@ -120,7 +130,7 @@ sub qbox_curl_make_form {
     } # if
 
     return $form;
-} # qbox_curl_make_form
+} # qbox_curl_make_multipart_form
 
 1;
 
