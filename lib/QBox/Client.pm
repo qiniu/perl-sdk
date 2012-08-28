@@ -158,21 +158,13 @@ sub call_with_form {
         return undef, { code => 400, message => 'Invalid form body' };
     }
 
-    my $form = Net::Curl::Form->new();
-
-    foreach my $key (keys(%$body)) {
-        $form->add(
-            CURLFORM_COPYNAME()     => $key,
-            CURLFORM_COPYCONTENTS() => $body->{$key}
-        );
-    } # foreach
-
     my $curl = qbox_curl_call_pre(
         $self,
         $url,
         $qbox_client_gen_headers->($self, $url)
     );
 
+    my $form = qbox_curl_make_form($body);
     $curl->setopt(CURLOPT_HTTPPOST, $form);
 
     return qbox_curl_call_core($curl, $opts);
