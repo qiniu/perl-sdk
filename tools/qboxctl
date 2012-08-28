@@ -148,10 +148,10 @@ sub gen_client {
     my $params = shift;
     my $hosts  = shift;
 
-    my $client_id     = $params->{client_id}     || $conf->{client_id};
-    my $client_secret = $params->{client_secret} || $conf->{client_secret};
-    my $username      = $params->{username}      || $conf->{username};
-    my $password      = $params->{password}      || $conf->{password};
+    my $client_id     = get_param($params->{client_id});
+    my $client_secret = get_param($params->{client_secret});
+    my $username      = get_param($params->{username});
+    my $password      = get_param($params->{password});
 
     if (defined($username) and defined($password)) {
         my $token = QBox::Auth::Token->new($hosts, $client_id, $client_secret);
@@ -159,10 +159,10 @@ sub gen_client {
         return QBox::Client->new($auth);
     }
 
-    my $acs_key = $params->{acs_key} || $conf->{acs_key} || 'Put your ACCESS KEY here';
-    my $scr_key = $params->{scr_key} || $conf->{scr_key} || 'Put your SECRET KEY here';
+    my $acs_key = get_param($params->{acs_key}, 'Put your ACCESS KEY here');
+    my $scr_key = get_param($params->{scr_key}, 'Put your SECRET KEY here');
 
-    my $policy = $params->{policy} || $conf->{policy};
+    my $policy = get_param($params->{policy});
     if (defined($policy) and $policy ne q{}) {
         $policy = QBox::Auth::Policy->new(from_json($policy));
         my $auth = QBox::Auth::UpToken->new($acs_key, $scr_key, $policy);
@@ -179,17 +179,17 @@ my $rs_get_rs_params = sub {
 
     my $rs_params = {};
 
-    $rs_params->{src_file}        = $params->{src}             || $conf->{src};
-    $rs_params->{bucket}          = $params->{bkt}             || $conf->{bkt}              || 'Bucket';
-    $rs_params->{key}             = $params->{key}             || $conf->{key}              || basename($rs_params->{src_file} || q{});
-    $rs_params->{mime}            = $params->{mime}            || $conf->{mime}             || 'application/octet-stream';
-    $rs_params->{meta}            = $params->{meta}            || $conf->{meta};
-    $rs_params->{other_params}    = $params->{params}          || $conf->{params};
-    $rs_params->{callback_params} = $params->{callback_params} || $conf->{callback_params};
+    $rs_params->{src_file}        = get_param($params->{src}, q{});
+    $rs_params->{bucket}          = get_param($params->{bkt}, 'Bucket');
+    $rs_params->{key}             = get_param($params->{key}, basename($rs_params->{src_file}));
+    $rs_params->{mime}            = get_param($params->{mime}, 'application/octet-stream');
+    $rs_params->{meta}            = get_param($params->{meta});
+    $rs_params->{other_params}    = get_param($params->{params});
+    $rs_params->{callback_params} = get_param($params->{callback_params});
 
-    $rs_params->{attr}            = $params->{attr}            || $conf->{attr};
-    $rs_params->{base}            = $params->{base}            || $conf->{base};
-    $rs_params->{domain}          = $params->{domain}          || $conf->{domain};
+    $rs_params->{attr}            = get_param($params->{attr});
+    $rs_params->{base}            = get_param($params->{base});
+    $rs_params->{domain}          = get_param($params->{domain});
 
     return $rs_params;
 };
@@ -356,7 +356,7 @@ my $eu_gen_settings = sub {
     my $params   = shift;
     my $settings = shift || {};
 
-    my $wms   = get_param($params->{wms}, $conf->{wms});
+    my $wms   = get_param($params->{wms});
     my $names = QBox::EU::wm_setting_names();
 
     merge_hash($settings, $conf, $names);
@@ -406,8 +406,8 @@ $cmds = {
     'rs.put-auth' => sub { # command
         my ($client, $params, $hosts) = @_;
 
-        my $expires_in   = $params->{expires_in} || $conf->{expires_in} || 30;
-        my $callback_url = $params->{callback_url} || $conf->{expires_in};
+        my $expires_in   = get_param($params->{expires_in}, 30);
+        my $callback_url = get_param($params->{callback_url});
 
         my $rs = QBox::RS->new($client, $hosts);
         return $rs->put_auth($expires_in, $callback_url);
@@ -434,13 +434,13 @@ $cmds = {
         my $fsize     = (stat($rs_params->{src_file}))[7];
         my $reader_at = QBox::ReaderAt::File->new($rs_params->{src_file});
 
-        my $notify_blk = $params->{notify_blk} || $conf->{notify_bld};
-        my $notify_chk = $params->{notify_chk} || $conf->{notify_chk};
+        my $notify_blk = get_param($params->{notify_blk});
+        my $notify_chk = get_param($params->{notify_chk});
 
         my $notify_params = {};
-        $notify_params->{stop_idx}  = get_param($params->{stop_idx}, $conf->{stop_idx});
-        $notify_params->{stop_size} = get_param($params->{stop_size}, $conf->{stop_size});
-        $notify_params->{prog_fl}   = get_param($params->{prog_fl}, $conf->{prog_fl});
+        $notify_params->{stop_idx}  = get_param($params->{stop_idx});
+        $notify_params->{stop_size} = get_param($params->{stop_size});
+        $notify_params->{prog_fl}   = get_param($params->{prog_fl});
 
         if (defined($notify_params->{stop_size})) {
             $notify_params->{stop_idx} ||= 0;
@@ -491,7 +491,7 @@ $cmds = {
     'up.query' => sub { # command
         my ($client, $params, $hosts) = @_;
 
-        my $prog_fl = get_param($params->{prog_fl}, $conf->{prog_fl});
+        my $prog_fl = get_param($params->{prog_fl});
         my $prog    = $read_progress->({ prog_fl => $prog_fl });
 
         if (not defined($prog)) {
@@ -504,7 +504,7 @@ $cmds = {
     'eu.wmget' => sub { # command
         my ($client, $params, $hosts) = @_;
 
-        my $customer = get_param($params->{customer}, $conf->{customer});
+        my $customer = get_param($params->{customer});
         my $eu = QBox::EU->new($client, $hosts);
         return $eu->wmget($customer);
     },
@@ -530,7 +530,7 @@ $cmds = {
     'uc.app-info' => sub { # command
         my ($client, $params, $hosts) = @_;
 
-        my $app = $params->{app} || $conf->{app};
+        my $app = get_param($params->{app});
 
         my $uc = QBox::UC->new($client, $hosts);
         return $uc->app_info($app);
@@ -538,7 +538,7 @@ $cmds = {
     'uc.new-access' => sub { # command
         my ($client, $params, $hosts) = @_;
 
-        my $app = $params->{app} || $conf->{app};
+        my $app = get_param($params->{app});
 
         my $uc = QBox::UC->new($client, $hosts);
         return $uc->new_access($app);
@@ -546,8 +546,8 @@ $cmds = {
     'uc.delete-access' => sub { # command
         my ($client, $params, $hosts) = @_;
 
-        my $app     = $params->{app}     || $conf->{app};
-        my $acs_key = $params->{acs_key} || $conf->{acs_key};
+        my $app     = get_param($params->{app});
+        my $acs_key = get_param($params->{acs_key});
 
         my $uc = QBox::UC->new($client, $hosts);
         return $uc->delete_access($app, $acs_key);
