@@ -53,26 +53,31 @@ sub get_opts {
     for (my $i = 0; $i < scalar(@$args); ++$i) {
         my $arg = $args->[$i];
 
-        if ($arg =~ m/--conf|-f/) {
+        if ($arg =~ m/^(?:--conf|-f)/) {
             $opts->{conf} ||= [];
             push @{$opts->{conf}}, $args->[$i + 1];
             ++$i;
             next;
         }
 
-        if ($arg =~ m/--debug|-d/) {
+        if ($arg =~ m/^(?:--debug|-d)/) {
             $debug = 1;
             next;
         }
 
-        if ($arg =~ m/--verbose|-v/) {
+        if ($arg =~ m/^(?:--verbose|-v)/) {
             $verbose = 1;
             next;
         }
 
-        if ($arg =~ m/--pretty|-P/) {
+        if ($arg =~ m/^(?:--pretty|-P)/) {
             $pretty = 1;
             next;
+        }
+
+        if ($arg =~ m/^-/) {
+            print STDERR "Unknown option '$arg'.\n";
+            exit(1);
         }
 
         push @$fixed, $arg;
@@ -605,7 +610,7 @@ if (not defined($cmd) or $cmd eq q{}) {
 $cmd = $cmd_alias{$cmd} || $cmd;
 my $cmd_sub = $ext_cmds{$cmd} || $cmds{$cmd};
 if (not defined($cmd_sub)) {
-    print "No such command.(cmd=${cmd})\n";
+    print STDERR "Unknown command '$cmd'.\n";
     exit(1);
 }
 
