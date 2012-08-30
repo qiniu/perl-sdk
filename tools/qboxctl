@@ -98,7 +98,13 @@ sub merge_hash {
 
     foreach my $key (@$keys) {
         if (exists($from->{$key})) {
-            $to->{$key} = $from->{$key};
+            if (ref($from->{$key}) eq 'HASH') {
+                $to->{$key} ||= {};
+                merge_hash($to->{$key}, $from->{$key}, [keys(%{$from->{$key}})]);
+            }
+            else {
+                $to->{$key} = $from->{$key};
+            }
         }
     } # foreach
 
@@ -185,7 +191,10 @@ sub gen_client {
 
     my $policy = get_param($params->{policy});
     if (defined($policy) and $policy ne q{}) {
-        $policy = QBox::Auth::Policy->new(from_json($policy));
+        if (ref($policy) eq q{}) {
+            $policy = from_json($policy);
+        }
+        $policy = QBox::Auth::Policy->new($policy);
         my $auth = QBox::Auth::UpToken->new($acs_key, $scr_key, $policy);
         return QBox::Client->new($auth);
     }
