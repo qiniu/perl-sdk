@@ -53,23 +53,24 @@ sub get_opts {
     for (my $i = 0; $i < scalar(@$args); ++$i) {
         my $arg = $args->[$i];
 
-        if ($arg eq '-f') {
+        if ($arg =~ m/--conf|-f/) {
             $opts->{conf} ||= [];
             push @{$opts->{conf}}, $args->[$i + 1];
             ++$i;
             next;
         }
 
-        if ($arg eq '-d') {
+        if ($arg =~ m/--debug|-d/) {
             $debug = 1;
             next;
         }
 
-        if ($args eq '-v') {
+        if ($arg =~ m/--verbose|-v/) {
             $verbose = 1;
+            next;
         }
 
-        if ($arg eq '-P') {
+        if ($arg =~ m/--pretty|-P/) {
             $pretty = 1;
             next;
         }
