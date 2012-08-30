@@ -27,7 +27,7 @@ our @EXPORT = qw(
 sub qbox_base64_encode {
     my $str = shift;
     my $encoded_str = encode_base64($str);
-    $encoded_str =~ s/\n$//;
+    $encoded_str =~ s/\n//g;
     return $encoded_str;
 } # qbox_base64_encode
 
