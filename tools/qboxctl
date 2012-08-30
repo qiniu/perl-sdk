@@ -381,14 +381,13 @@ my %cmd_alias = (
     'query' => 'up.query',
     'wmget' => 'eu.wmget',
     'wmset' => 'eu.wmset',
-    'wmmod' => 'eu.wmset-any',
+    'wmmod' => 'eu.wmmod',
     'appi'  => 'uc.app-info',
     'nacs'  => 'uc.new-access',
     'dacs'  => 'uc.delete-access',
 );
 
-my $cmds = undef;
-$cmds = {
+my %cmds = (
     'rs.get' => sub { # command
         my ($client, $params, $hosts) = @_;
 
@@ -534,18 +533,6 @@ $cmds = {
         my $eu = QBox::EU->new($client, $hosts);
         return $eu->wmset($settings);
     },
-    'eu.wmset-any' => sub { # command extended
-        my ($client, $params, $hosts) = @_;
-
-        my ($settings, $err) = $cmds->{'eu.wmget'}->($client, $params, $hosts);
-        if ($err->{code} != 200) {
-            return undef, $err;
-        }
-
-        $settings = $eu_gen_settings->($params, $settings);
-        my $eu = QBox::EU->new($client, $hosts);
-        return $eu->wmset($settings);
-    },
     'uc.app-info' => sub { # command
         my ($client, $params, $hosts) = @_;
 
@@ -571,7 +558,22 @@ $cmds = {
         my $uc = QBox::UC->new($client, $hosts);
         return $uc->delete_access($app, $acs_key);
     },
-};
+);
+
+my %ext_cmds = (
+    'eu.wmmod' => sub { # command extended
+        my ($client, $params, $hosts) = @_;
+
+        my ($settings, $err) = $cmds{'eu.wmget'}->($client, $params, $hosts);
+        if ($err->{code} != 200) {
+            return undef, $err;
+        }
+
+        $settings = $eu_gen_settings->($params, $settings);
+        my $eu = QBox::EU->new($client, $hosts);
+        return $eu->wmset($settings);
+    },
+);
 
 my ($args, $opts) = get_opts(\@ARGV);
 $conf = read_conf($opts->{conf});
@@ -585,7 +587,8 @@ if (not defined($cmd) or $cmd eq q{}) {
 }
 
 $cmd = $cmd_alias{$cmd} || $cmd;
-if (not defined($cmds->{$cmd})) {
+my $cmd_sub = $ext_cmds{$cmd} || $cmds{$cmd};
+if (not defined($cmd_sub)) {
     print "No such command.(cmd=${cmd})\n";
     exit(1);
 }
@@ -616,7 +619,7 @@ merge_hash($params, $ori_params, [keys(%$ori_params)]);
 my $hosts  = get_hosts($params);
 my $client = gen_client($params, $hosts);
 
-my ($ret, $err) = $cmds->{$cmd}->($client, $params, $hosts);
+my ($ret, $err) = $cmd_sub->($client, $params, $hosts);
 
 $ret ||= {};
 printf "ret=%s\n", to_json($ret, { pretty => $pretty });
