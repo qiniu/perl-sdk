@@ -111,18 +111,26 @@ sub get {
     my $attr_name = shift;
     my $base      = shift;
 
-    my $encoded_entry = qbox_base64_encode_urlsafe(qbox_make_entry($bucket, $key));
+    return undef, { code => 499, message => 'Invalid bucket' } if (not defined($bucket));
+    return undef, { code => 499, message => 'Invalid key' } if (not defined($key));
 
+    $bucket = "$bucket";
+    $key    = "$key";
+
+    my $encoded_entry = qbox_base64_encode_urlsafe(qbox_make_entry($bucket, $key));
     my @args = (
         $self->{hosts}{rs_host},
         'get' => $encoded_entry,
     );
 
-    if ($base and $base ne q{}) {
+    $base      = defined($base)      ? "$base"      : q{};
+    $attr_name = defined($attr_name) ? "$attr_name" : q{};
+
+    if ($base ne q{}) {
         push @args, 'base', $base;
     }
 
-    if ($attr_name and $attr_name ne q{}) {
+    if ($attr_name ne q{}) {
         $attr_name = qbox_base64_encode_urlsafe($attr_name);
         push @args, 'attName', $attr_name;
     }
@@ -144,12 +152,8 @@ sub put {
     my $fsize       = shift;
     my $custom_meta = shift;
 
-    if (not defined($bucket)) {
-        return undef, { code => 499, message => 'Invalid bucket' };
-    }
-    if (not defined($key)) {
-        return undef, { code => 499, message => 'Invalid key' };
-    }
+    return undef, { code => 499, message => 'Invalid bucket' } if (not defined($bucket));
+    return undef, { code => 499, message => 'Invalid key' } if (not defined($key));
 
     $bucket      = "$bucket";
     $key         = "$key";
@@ -182,18 +186,15 @@ sub put_file {
     my $file        = shift;
     my $custom_meta = shift;
 
-    if (not defined($file)) {
-        return undef, { code => 499, message => 'Invalid file' };
-    }
+    return undef, { code => 499, message => 'Invalid file' } if (not defined($file));
 
     $file = "$file";
-    if (not -r $file) {
-        return undef, { code => 499, message => 'Cannot read file' };
-    }
+    return undef, { code => 499, message => 'Cannot read file' } if (not -r $file);
 
     my $fsize  = (stat($file))[7];
     my $reader = QBox::Reader::File->new({ file => $file });
 
+    # forward invocation
     return $self->put($bucket, $key, $mime_type, $reader, $fsize, $custom_meta);
 } # put_file
 
@@ -209,6 +210,8 @@ sub put_auth_ex {
     my $self       = shift;
     my $expires_in = shift;
     my $callback   = shift;
+
+    return undef, { code => 499, message => 'Invalid expiry' } if (not defined($expires_in));
 
     my @args = (
         $self->{hosts}{io_host},
@@ -235,8 +238,17 @@ sub resumale_put {
     my $reader_at       = shift;
     my $fsize           = shift;
     my $custom_meta     = shift;
-    my $params          = shift;
+    my $other_params    = shift;
     my $callback_params = shift;
+
+    return undef, { code => 499, message => 'Invalid entry' } if (not defined($entry));
+    return undef, { code => 499, message => 'Invalid file size' } if (not defined($fsize));
+
+    $entry           = "$entry";
+    $mime_type       = defined($mime_type)       ? "$mime_type"       : q{application/octet-stream};
+    $custom_meta     = defined($custom_meta)     ? "$custom_meta"     : q{};
+    $other_params    = defined($other_params)    ? "$other_params"    : q{};
+    $callback_params = defined($callback_params) ? "$callback_params" : q{};
 
     $prog ||= QBox::UP::new_progress($fsize);
 
@@ -246,24 +258,22 @@ sub resumale_put {
         return $ret, $err, $prog;
     }
 
-    my @params = ();
+    my @new_params = ();
 
-    if ($params and $params ne q{}) {
-        push @params, $params;
+    if ($other_params ne q{}) {
+        push @new_params, $other_params;
+    }
+    if ($custom_meta ne q{}) {
+        push @new_params, 'meta', qbox_base64_encode_urlsafe($custom_meta);
     }
 
-    if ($custom_meta and $custom_meta ne q{}) {
-        push @params, 'meta', qbox_base64_encode_urlsafe($custom_meta);
-    }
-
-    $params = join('/', @params);
-
+    my $new_params = join('/', @new_params);
     ($ret, $err) = $up->mkfile(
         'rs-mkfile',
         $entry,
         $mime_type,
         $fsize,
-        $params,
+        $new_params,
         $callback_params,
         $prog->{checksums},
         $prog->{blk_count},
@@ -281,6 +291,12 @@ sub stat {
     my $bucket = shift;
     my $key    = shift;
 
+    return undef, { code => 499, message => 'Invalid bucket' } if (not defined($bucket));
+    return undef, { code => 499, message => 'Invalid key' } if (not defined($key));
+
+    $bucket = "$bucket";
+    $key    = "$key";
+
     my $encoded_entry = qbox_base64_encode_urlsafe(qbox_make_entry($bucket, $key)); 
     my $url = "$self->{hosts}{rs_host}/stat/${encoded_entry}";
     return $self->{client}->call($url);
@@ -291,6 +307,12 @@ sub publish {
     my $bucket = shift;
     my $domain = shift;
 
+    return undef, { code => 499, message => 'Invalid bucket' } if (not defined($bucket));
+    return undef, { code => 499, message => 'Invalid domain' } if (not defined($domain));
+
+    $bucket = "$bucket";
+    $domain = "$domain";
+
     my $encoded_domain = qbox_base64_encode_urlsafe($domain); 
     my $url = "$self->{hosts}{rs_host}/publish/${encoded_domain}/from/${bucket}";
     return $self->{client}->call($url);
@@ -299,6 +321,10 @@ sub publish {
 sub unpublish {
     my $self   = shift;
     my $domain = shift;
+
+    return undef, { code => 499, message => 'Invalid domain' } if (not defined($domain));
+
+    $domain = "$domain";
 
     my $encoded_domain = qbox_base64_encode_urlsafe($domain); 
     my $url = "$self->{hosts}{rs_host}/unpublish/${encoded_domain}";
@@ -310,6 +336,12 @@ sub delete {
     my $bucket = shift;
     my $key    = shift;
 
+    return undef, { code => 499, message => 'Invalid bucket' } if (not defined($bucket));
+    return undef, { code => 499, message => 'Invalid key' } if (not defined($key));
+
+    $bucket = "$bucket";
+    $key    = "$key";
+
     my $encoded_entry = qbox_base64_encode_urlsafe(qbox_make_entry($bucket, $key)); 
     my $url = "$self->{hosts}{rs_host}/delete/${encoded_entry}";
     return $self->{client}->call($url);
@@ -318,6 +350,10 @@ sub delete {
 sub drop {
     my $self   = shift;
     my $bucket = shift;
+
+    return undef, { code => 499, message => 'Invalid bucket' } if (not defined($bucket));
+
+    $bucket = "$bucket";
 
     my $url = "$self->{hosts}{rs_host}/drop/${bucket}";
     return $self->{client}->call($url);
