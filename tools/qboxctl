@@ -23,7 +23,18 @@ use QBox::ReaderAt::File;
 
 my $conf   = undef;
 my $debug  = undef;
+my $verbose = undef;
 my $pretty = undef;
+
+sub fmt_json {
+    my $obj = shift;
+    if ($pretty) {
+        my $json = to_json($obj, { pretty => 1});
+        $json =~ s/\n$//;
+        return $json;
+    }
+    return to_json($obj);
+} # fmt_json
 
 sub get_param {
     foreach my $p (@_) {
@@ -52,6 +63,10 @@ sub get_opts {
         if ($arg eq '-d') {
             $debug = 1;
             next;
+        }
+
+        if ($args eq '-v') {
+            $verbose = 1;
         }
 
         if ($arg eq '-P') {
@@ -601,10 +616,10 @@ if ($debug) {
 
         my $type = ref($context);
         if ($type eq 'HASH') {
-            printf "${title}=%s\n", to_json($context, { pretty => $pretty });
+            printf STDERR "${title}=%s\n", fmt_json($context);
         }
         else {
-            print "${title}=[${context}]\n";
+            print STDERR "${title}=[${context}]\n";
         }
     });
 }
@@ -621,8 +636,11 @@ my $client = gen_client($params, $hosts);
 
 my ($ret, $err) = $cmd_sub->($client, $params, $hosts);
 
+if ($verbose or ($err->{code} != 200)) {
+    printf STDERR "%d %s\n", $err->{code}, $err->{message};
+}
+
 $ret ||= {};
-printf "ret=%s\n", to_json($ret, { pretty => $pretty });
-printf "code=%d\nmessage=[%s]\n", $err->{code}, $err->{message};
+printf "%s\n", fmt_json($ret);
 
 exit 0;
