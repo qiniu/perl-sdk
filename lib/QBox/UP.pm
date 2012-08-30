@@ -290,7 +290,7 @@ sub mkfile {
     push @args, 'mimeType', qbox_base64_encode_urlsafe($mime_type);
 
     if ($callback_params and $callback_params ne q{}) {
-        push @args, 'params', $callback_params;
+        push @args, 'params', qbox_base64_encode_urlsafe($callback_params);
     }
 
     my $url = join('/', @args);
