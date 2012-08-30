@@ -368,6 +368,25 @@ my $eu_gen_settings = sub {
     return $settings;
 };
 
+my %cmd_alias = (
+    'get'   => 'rs.get',
+    'stat'  => 'rs.stat',
+    'pub'   => 'rs.publish',
+    'unpub' => 'rs.unpublish',
+    'puta'  => 'rs.put-auth',
+    'putf'  => 'rs.put-file',
+    'rput'  => 'rs.resumable-put',
+    'del'   => 'rs.delete',
+    'drop'  => 'rs.drop',
+    'query' => 'up.query',
+    'wmget' => 'eu.wmget',
+    'wmset' => 'eu.wmset',
+    'wmmod' => 'eu.wmset-any',
+    'appi'  => 'uc.app-info',
+    'nacs'  => 'uc.new-access',
+    'dacs'  => 'uc.delete-access',
+);
+
 my $cmds = undef;
 $cmds = {
     'rs.get' => sub { # command
@@ -559,12 +578,13 @@ $conf = read_conf($opts->{conf});
 
 my $cmd = shift(@$args);
 
-if (not defined($cmd)) {
+if (not defined($cmd) or $cmd eq q{}) {
     my $prog_nm = basename($0);
     print "Usage: ${prog_nm} CMD [PARAM=ARG [PARAM=ARG [...]]]\n";
     exit(1);
 }
 
+$cmd = $cmd_alias{$cmd} || $cmd;
 if (not defined($cmds->{$cmd})) {
     print "No such command.(cmd=${cmd})\n";
     exit(1);
