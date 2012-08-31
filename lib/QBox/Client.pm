@@ -92,10 +92,8 @@ sub call {
     my $url          = shift;
     my $opts         = shift;
 
-    my $curl = qbox_curl_call_pre(
-        $url,
-        $qbox_client_gen_headers->($self, $url)
-    );
+    my $headers = $qbox_client_gen_headers->($self, $url);
+    my $curl = qbox_curl_call_pre($url, $headers, $opts);
     return qbox_curl_call_core($curl, $opts);
 } # call
 
@@ -115,7 +113,7 @@ sub call_with_binary {
         "Content-Length: ${body_len}",
     ]);
 
-    my $curl = qbox_curl_call_pre($url, $headers);
+    my $curl = qbox_curl_call_pre($url, $headers, $opts);
 
     $curl->setopt(CURLOPT_POST,         1);
     $curl->setopt(CURLOPT_INFILESIZE,   $body_len);
@@ -141,7 +139,7 @@ sub call_with_buffer {
         "Content-Length: ${body_len}",
     ]);
 
-    my $curl = qbox_curl_call_pre($url, $headers);
+    my $curl = qbox_curl_call_pre($url, $headers, $opts);
 
     $curl->setopt(CURLOPT_POST,          1);
     $curl->setopt(CURLOPT_POSTFIELDSIZE, $body_len);
@@ -161,10 +159,8 @@ sub call_with_form {
         return undef, { code => 400, message => 'Invalid form body' };
     }
 
-    my $curl = qbox_curl_call_pre(
-        $url,
-        $qbox_client_gen_headers->($self, $url)
-    );
+    my $headers = $qbox_client_gen_headers->($self, $url);
+    my $curl = qbox_curl_call_pre($url, $headers, $opts);
 
     my $form = qbox_curl_make_form($body);
     $curl->setopt(CURLOPT_POSTFIELDS, $form);
@@ -183,10 +179,8 @@ sub call_with_multipart_form {
         return undef, { code => 400, message => 'Invalid form body' };
     }
 
-    my $curl = qbox_curl_call_pre(
-        $url,
-        $qbox_client_gen_headers->($self, $url)
-    );
+    my $headers = $qbox_client_gen_headers->($self, $url);
+    my $curl = qbox_curl_call_pre($url, $headers, $opts);
 
     my $form = qbox_curl_make_multipart_form($body);
     $curl->setopt(CURLOPT_HTTPPOST, $form);
