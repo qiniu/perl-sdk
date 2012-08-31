@@ -31,18 +31,21 @@ our @EXPORT = qw(
 
 sub qbox_curl_call_pre {
     my $url     = shift;
-    my $headers = shift;
+    my $headers = shift || [];
+    my $opts    = shift || {};
 
     my $curl = Net::Curl::Easy->new();
 
-    QBox::Debug::callback('url', $url);
+    my $svc = $opts->{svc} || 'curl';
+    QBox::Debug::callback("${svc}.url", $url);
+    QBox::Debug::callback("${svc}.headers", $headers);
 
     $curl->setopt(CURLOPT_CUSTOMREQUEST,  'POST');
     $curl->setopt(CURLOPT_SSL_VERIFYPEER, 0);
     $curl->setopt(CURLOPT_SSL_VERIFYHOST, 0);
     $curl->setopt(CURLOPT_URL,            $url);
 
-    if (ref($headers) eq 'ARRAY') {
+    if (ref($headers) eq 'ARRAY' and scalar(@$headers) > 0) {
         $curl->setopt(CURLOPT_HTTPHEADER, $headers);
     }
 
