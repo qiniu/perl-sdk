@@ -19,6 +19,11 @@ use QBox::Config;
 use QBox::Client;
 use QBox::Misc;
 
+use constant API_MKBLOCK  => 'up.mkblock';
+use constant API_BLOCKPUT => 'up.blockput';
+use constant API_MKFILE   => 'up.mkfile';
+use constant API_QUERY    => 'up.query';
+
 our @ISA = qw(Exporter);
 our @EXPORT = qw(
     qbox_up_new_progress
@@ -80,10 +85,11 @@ my $qbox_up_chunk_put = sub {
     my $body     = shift;
     my $body_len = shift;
     my $url      = shift;
+    my $opts     = shift;
 
     my ($body_data, $byes) = $body->{read}->($body_len, $body->{uservar});
     $url .= '/mimeType/' . $encoded_mime_type;
-    my ($ret, $err) = $self->{client}->call_with_buffer($url, $body_data, $body_len);
+    my ($ret, $err) = $self->{client}->call_with_buffer($url, $body_data, $body_len, $opts);
 
     if ($err->{code} != 200) {
         return undef, $err;
@@ -145,7 +151,13 @@ sub mkblock {
     my $body_len = shift;
 
     my $url = "$self->{hosts}{up_host}/mkblk/${blk_size}";
-    return $qbox_up_chunk_put->($self, $body, $body_len, $url);
+    return $qbox_up_chunk_put->(
+        $self,
+        $body,
+        $body_len,
+        $url,
+        { 'api' => API_MKBLOCK }
+    );
 } # mkblock
 
 sub blockput {
@@ -156,7 +168,13 @@ sub blockput {
     my $body_len = shift;
 
     my $url = "$self->{hosts}{up_host}/bput/${ctx}/${offset}";
-    return $qbox_up_chunk_put->($self, $body, $body_len, $url);
+    return $qbox_up_chunk_put->(
+        $self,
+        $body,
+        $body_len,
+        $url,
+        { 'api' => API_BLOCKPUT }
+    );
 } # blockput
 
 my $read_part = sub {
@@ -295,7 +313,12 @@ sub mkfile {
 
     my $url = join('/', @args);
     my ($cksum_buff, $cksum_size) = reform_checksums($checksums);
-    return $self->{client}->call_with_buffer($url, $cksum_buff, $cksum_size);
+    return $self->{client}->call_with_buffer(
+        $url,
+        $cksum_buff,
+        $cksum_size,
+        { 'api' => API_MKFILE }
+    );
 } # mkfile
 
 sub put {
@@ -363,7 +386,7 @@ sub query {
         $url,
         $cksum_buff,
         $cksum_size,
-        { as_verbatim => 1 }
+        { 'api' => API_QUERY, 'as_verbatim' => 1 }
     );
     return $ret, $err;
 } # query
