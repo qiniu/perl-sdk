@@ -624,7 +624,7 @@ if (not defined($cmd_sub)) {
 }
 
 if ($debug) {
-    QBox::Debug::set_callback(sub {
+    QBox::Debug::set_stub(sub {
         my ($data, $title, $context) = @_;
 
         my $type = ref($$context);

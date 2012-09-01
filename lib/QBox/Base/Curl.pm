@@ -36,9 +36,9 @@ sub qbox_curl_call_pre {
 
     my $curl = Net::Curl::Easy->new();
 
-    my $api = $opts->{api} || 'curl';
-    QBox::Debug::callback("${api}.url", \$url);
-    QBox::Debug::callback("${api}.headers", \$headers);
+    my $api = $opts->{api} || 'unknown_api';
+    QBox::Debug::call_stub("${api}.url", \$url);
+    QBox::Debug::call_stub("${api}.headers", \$headers);
 
     $curl->setopt(CURLOPT_CUSTOMREQUEST,  'POST');
     $curl->setopt(CURLOPT_SSL_VERIFYPEER, 0);

@@ -15,10 +15,10 @@ use warnings;
 
 use constant TAG_ALL => 'all';
 
-my %callback_settings = ();
+my %stub_settings = ();
 
 ### for OOP
-sub set_callback {
+sub set_stub {
     my $handler = shift;
     my $data    = shift;
     my $tag     = shift;
@@ -26,7 +26,7 @@ sub set_callback {
     $tag = defined($tag) ? "$tag" : TAG_ALL;
 
     if (ref($handler) eq q{CODE}) {
-        $callback_settings{$tag} = {
+        $stub_settings{$tag} = {
             handler => $handler,
             data    => $data,
         };
@@ -34,32 +34,32 @@ sub set_callback {
     }
 
     return undef;
-} # set_callback
+} # set_stub
 
-sub unset_callback {
+sub unset_stub {
     my $tag = shift || TAG_ALL;
 
     $tag = defined($tag) ? "$tag" : TAG_ALL;
 
-    if (exists($callback_settings{$tag})) {
-        delete($callback_settings{$tag});
+    if (exists($stub_settings{$tag})) {
+        delete($stub_settings{$tag});
     }
-} # unset_callback
+} # unset_stub
 
-sub callback {
+sub call_stub {
     my ($tag) = @_;
 
-    my $setting = $callback_settings{$tag};
+    my $setting = $stub_settings{$tag};
     if (defined($setting)) {
         my $ret = $setting->{handler}->($setting->{data}, @_);
         return if not $ret; # no propogation
     }
 
-    $setting =  $callback_settings{+TAG_ALL};
+    $setting =  $stub_settings{+TAG_ALL};
     if (defined($setting)) {
         $setting->{handler}->($setting->{data}, @_);
     }
-} # callback
+} # call_stub
 
 1;
 
