@@ -15,7 +15,43 @@ use warnings;
 
 use QBox::Config;
 
+use constant API_WMSET       => 'eu.wmset';
+use constant API_WMGET       => 'eu.wmget';
+use constant API_ADMIN_WMGET => 'eu.admin_wmget';
+
 ### for OOP
+my $qbox_eu_wmget = sub {
+    my $self     = shift;
+    my $api      = shift;
+    my $customer = shift;
+    my $query    = shift || {};
+    my $opts     = shift || {}; 
+
+    $opts->{api} = $api;
+
+    if (defined($customer) and $customer ne q{}) {
+        $query->{customer} = $customer;
+    }
+
+    my $url = "$self->{hosts}{eu_host}/${api}";
+    my $ret = undef;
+    my $err = undef;
+
+    if (scalar(keys(%$query)) > 0) {
+        ($ret, $err) = $self->{client}->call_with_multipart_form(
+            $url,
+            $query,
+            undef,   # no body length
+            $opts
+        );
+    }
+    else {
+        ($ret, $err) = $self->{client}->call($url, $opts);
+    }
+
+    return $ret, $err;
+};
+
 sub new {
     my $class  = shift || __PACKAGE__;
     my $client = shift;
@@ -64,30 +100,20 @@ sub wmset {
     } # foreach
 
     my $url = "$self->{hosts}{eu_host}/wmset";
-    return $self->{client}->call_with_multipart_form($url, $new_settings);
+    return $self->{client}->call_with_multipart_form(
+        $url,
+        $new_settings,
+        undef,           # no body length
+        { 'api' => 'eu.wmset' }
+    );
 } # wmset
 
 sub wmget {
     my $self     = shift;
     my $customer = shift;
-    my $query    = shift || {};
+    my $query    = shift;
 
-    if (defined($customer) and $customer ne q{}) {
-        $query->{customer} = $customer;
-    }
-
-    my $url = "$self->{hosts}{eu_host}/wmget";
-    my $ret = undef;
-    my $err = undef;
-
-    if (scalar(keys(%$query)) > 0) {
-        ($ret, $err) = $self->{client}->call_with_multipart_form($url, $query);
-    }
-    else {
-        ($ret, $err) = $self->{client}->call($url);
-    }
-
-    return $ret, $err;
+    return $self->$qbox_eu_wmget('wmget', $customer, $query);
 } # wmget
 
 sub admin_wmget {
@@ -100,7 +126,7 @@ sub admin_wmget {
     }
 
     my $query = { id => $id };
-    return $self->wmget($customer, $query);
+    return $self->$qbox_eu_wmget('admin/wmget', $customer, $query);
 } # admin_wmget
 
 1;

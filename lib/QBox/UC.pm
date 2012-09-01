@@ -15,6 +15,10 @@ use warnings;
 
 use QBox::Config;
 
+use constant API_APP_INFO      => 'uc.app_info';
+use constant API_NEW_ACCESS    => 'uc.new_access';
+use constant API_DELETE_ACCESS => 'uc.delete_access';
+
 sub new {
     my $class = shift || __PACKAGE__;
     my $client = shift;
@@ -36,7 +40,12 @@ sub app_info {
     my $query = { app => $app };
 
     my $url = "$self->{hosts}{uc_host}/appInfo";
-    return $self->{client}->call_with_form($url, $query);
+    return $self->{client}->call_with_form(
+        $url,
+        $query,
+        undef,  # no body length
+        { 'api' => API_APP_INFO }
+    );
 } # app_info
 
 sub new_access {
@@ -46,7 +55,12 @@ sub new_access {
     my $query = { app => $app };
 
     my $url = "$self->{hosts}{uc_host}/newAccess";
-    return $self->{client}->call_with_form($url, $query);
+    return $self->{client}->call_with_form(
+        $url,
+        $query,
+        undef,
+        { 'api' => API_NEW_ACCESS }
+    );
 } # new_access
 
 sub delete_access {
@@ -57,7 +71,12 @@ sub delete_access {
     my $query = { app => $app, key => $acs_key };
 
     my $url = "$self->{hosts}{uc_host}/deleteAccess";
-    return $self->{client}->call_with_form($url, $query);
+    return $self->{client}->call_with_form(
+        $url,
+        $query,
+        undef,
+        { 'api' => API_DELETE_ACCESS }
+    );
 } # delete_access
 
 1;

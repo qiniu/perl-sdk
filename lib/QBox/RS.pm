@@ -22,6 +22,15 @@ use QBox::Reader::File;
 use QBox::UP;
 use QBox::Misc;
 
+use constant API_GET         => 'rs.get';
+use constant API_PUT         => 'rs.put';
+use constant API_PUT_AUTH_EX => 'rs.put_auth_ex';
+use constant API_STAT        => 'rs.stat';
+use constant API_PUBLISH     => 'rs.publish';
+use constant API_UNPUBLISH   => 'rs.unpublish';
+use constant API_DELETE      => 'rs.delete';
+use constant API_DROP        => 'rs.drop';
+
 our @ISA = qw(Exporter);
 our @EXPORT = qw(
     qbox_rs_init
@@ -93,9 +102,9 @@ sub new {
     my $client = shift;
     my $hosts  = shift || {};
 
-    $hosts->{rs_host} ||= QBOX_RS_HOST;
-    $hosts->{up_host} ||= QBOX_UP_HOST;
-    $hosts->{io_host} ||= QBOX_IO_HOST;
+    $hosts->{rs_host} ||= QBox::Config::QBOX_RS_HOST;
+    $hosts->{up_host} ||= QBox::Config::QBOX_UP_HOST;
+    $hosts->{io_host} ||= QBox::Config::QBOX_IO_HOST;
 
     my $self = {
         client => $client,
@@ -136,7 +145,7 @@ sub get {
     }
 
     my $url = join('/', @args);
-    return $self->{client}->call($url);
+    return $self->{client}->call($url, { 'api' => API_GET });
 } # get
 
 sub get_if_not_modified {
@@ -175,7 +184,12 @@ sub put {
     }
 
     my $url = join('/', @args);
-    return $self->{client}->call_with_binary($url, $reader, $fsize);
+    return $self->{client}->call_with_binary(
+        $url,
+        $reader,
+        $fsize,
+        { 'api' => API_PUT }
+    );
 } # put
 
 sub put_file {
@@ -224,7 +238,7 @@ sub put_auth_ex {
     }
 
     my $url = join('/', @args);
-    return $self->{client}->call($url);
+    return $self->{client}->call($url, { 'api' => API_PUT_AUTH_EX });
 } # put_auth_ex
 
 sub resumale_put {
@@ -299,7 +313,7 @@ sub stat {
 
     my $encoded_entry = qbox_base64_encode_urlsafe(qbox_make_entry($bucket, $key)); 
     my $url = "$self->{hosts}{rs_host}/stat/${encoded_entry}";
-    return $self->{client}->call($url);
+    return $self->{client}->call($url, { 'api' => API_STAT });
 } # stat
 
 sub publish {
@@ -315,7 +329,7 @@ sub publish {
 
     my $encoded_domain = qbox_base64_encode_urlsafe($domain); 
     my $url = "$self->{hosts}{rs_host}/publish/${encoded_domain}/from/${bucket}";
-    return $self->{client}->call($url);
+    return $self->{client}->call($url, { 'api' => API_PUBLISH });
 } # publish
 
 sub unpublish {
@@ -328,7 +342,7 @@ sub unpublish {
 
     my $encoded_domain = qbox_base64_encode_urlsafe($domain); 
     my $url = "$self->{hosts}{rs_host}/unpublish/${encoded_domain}";
-    return $self->{client}->call($url);
+    return $self->{client}->call($url, { 'api' => API_UNPUBLISH });
 } # unpublish
 
 sub delete {
@@ -344,7 +358,7 @@ sub delete {
 
     my $encoded_entry = qbox_base64_encode_urlsafe(qbox_make_entry($bucket, $key)); 
     my $url = "$self->{hosts}{rs_host}/delete/${encoded_entry}";
-    return $self->{client}->call($url);
+    return $self->{client}->call($url, { 'api' => API_DELETE });
 } # delete
 
 sub drop {
@@ -356,7 +370,7 @@ sub drop {
     $bucket = "$bucket";
 
     my $url = "$self->{hosts}{rs_host}/drop/${bucket}";
-    return $self->{client}->call($url);
+    return $self->{client}->call($url, { 'api' => API_DROP });
 } # drop
 
 1;
