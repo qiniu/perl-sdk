@@ -625,16 +625,14 @@ if (not defined($cmd_sub)) {
 
 if ($debug) {
     QBox::Debug::set_callback(sub {
-        my $data    = shift;
-        my $title   = shift;
-        my $context = shift;
+        my ($data, $title, $context) = @_;
 
-        my $type = ref($context);
-        if ($type eq 'HASH') {
-            printf STDERR "${title}=%s\n", fmt_json($context);
+        my $type = ref($$context);
+        if ($type eq 'HASH' or $type eq 'ARRAY') {
+            printf STDERR "${title}=%s\n", fmt_json($$context);
         }
         else {
-            print STDERR "${title}=[${context}]\n";
+            print STDERR "${title}=[$${context}]\n";
         }
     });
 }
