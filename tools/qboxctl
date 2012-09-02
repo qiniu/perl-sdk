@@ -133,6 +133,22 @@ sub get_json {
     return $json;
 } # get_json
 
+sub mod_http_headers {
+    my $src = shift;
+    my $dst = shift;
+
+    if (ref($src->{del}) eq 'ARRAY') {
+        foreach my $header (@{$src->{del}}) {
+            my $re = "^${header}\\s*:";
+            $$dst = [grep { $_ !~ $re } @{$$dst}];
+        } # foreach
+    }
+
+    if (ref($src->{add}) eq 'ARRAY') {
+        push @{$$dst}, @{$src->{add}};
+    }
+} # mod_http_headers
+
 sub read_conf {
     my $fls = shift;
 
@@ -609,10 +625,28 @@ if (not defined($cmd_sub)) {
     exit(1);
 }
 
-if ($debug) {
-    QBox::Debug::set_stub(sub {
-        my ($data, $title, $context) = @_;
+my $rc = {
+    login   => {},
+    params  => {},
+    headers => {},
+};
 
+merge_hash($rc, $conf, [keys(%$conf)]);
+
+my $params = get_params($args);
+merge_hash($rc->{params}, $params, [keys(%$params)]);
+
+QBox::Debug::set_stub(sub {
+    my ($data, $title, $context) = @_;
+
+    # may modify http headers
+    if ($title =~ m/[.]headers$/) {
+        mod_http_headers($rc->{headers}{$title} || {}, $context);
+        mod_http_headers($rc->{headers}{all} || {}, $context);
+    }
+
+    # may echo context
+    if ($debug) {
         my $type = ref($$context);
         if ($type eq 'HASH' or $type eq 'ARRAY') {
             printf STDERR "${title}=%s\n", fmt_json($$context);
@@ -620,18 +654,8 @@ if ($debug) {
         else {
             print STDERR "${title}=[$${context}]\n";
         }
-    });
-}
-
-my $rc     = {
-    login  => {},
-    params => {},
-};
-
-merge_hash($rc, $conf, [keys(%$conf)]);
-
-my $params = get_params($args);
-merge_hash($rc->{params}, $params, [keys(%$params)]);
+    }
+});
 
 my $hosts  = $rc->{hosts} || {};
 my $client = gen_client($rc->{login}, $hosts);
