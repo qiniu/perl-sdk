@@ -133,20 +133,6 @@ sub get_json {
     return $json;
 } # get_json
 
-sub get_hosts {
-    my $params = shift;
-    my $hosts  = {};
-
-    $hosts->{ac_host} = get_param($params->{ac_host}, $conf->{ac_host});
-    $hosts->{io_host} = get_param($params->{io_host}, $conf->{io_host});
-    $hosts->{up_host} = get_param($params->{up_host}, $conf->{up_host});
-    $hosts->{rs_host} = get_param($params->{rs_host}, $conf->{rs_host});
-    $hosts->{eu_host} = get_param($params->{eu_host}, $conf->{eu_host});
-    $hosts->{uc_host} = get_param($params->{uc_host}, $conf->{uc_host});
-
-    return $hosts;
-} # get_hosts
-
 sub read_conf {
     my $fls = shift;
 
@@ -172,13 +158,13 @@ sub read_conf {
 } # read_conf
 
 sub gen_client {
-    my $params = shift;
+    my $login = shift;
     my $hosts  = shift;
 
-    my $client_id     = get_param($params->{client_id});
-    my $client_secret = get_param($params->{client_secret});
-    my $username      = get_param($params->{username});
-    my $password      = get_param($params->{password});
+    my $client_id     = get_param($login->{client_id});
+    my $client_secret = get_param($login->{client_secret});
+    my $username      = get_param($login->{username});
+    my $password      = get_param($login->{password});
 
     if (defined($username) and defined($password)) {
         my $token = QBox::Auth::Token->new($hosts, $client_id, $client_secret);
@@ -186,10 +172,10 @@ sub gen_client {
         return QBox::Client->new($auth);
     }
 
-    my $acs_key = get_param($params->{acs_key}, 'Put your ACCESS KEY here');
-    my $scr_key = get_param($params->{scr_key}, 'Put your SECRET KEY here');
+    my $acs_key = get_param($login->{acs_key}, 'Put your ACCESS KEY here');
+    my $scr_key = get_param($login->{scr_key}, 'Put your SECRET KEY here');
 
-    my $policy = get_param($params->{policy});
+    my $policy = get_param($login->{policy});
     if (defined($policy) and $policy ne q{}) {
         if (ref($policy) eq q{}) {
             $policy = from_json($policy);
@@ -637,17 +623,20 @@ if ($debug) {
     });
 }
 
-my $ori_params = get_params($args);
-my $params = {};
-if (exists($conf->{params}) and ref($conf->{params}) eq 'HASH') {
-    merge_hash($params, $conf->{params}, [keys(%{$conf->{params}})]);
-}
-merge_hash($params, $ori_params, [keys(%$ori_params)]);
+my $rc     = {
+    login  => {},
+    params => {},
+};
 
-my $hosts  = get_hosts($params);
-my $client = gen_client($params, $hosts);
+merge_hash($rc, $conf, [keys(%$conf)]);
 
-my ($ret, $err) = $cmd_sub->($client, $params, $hosts);
+my $params = get_params($args);
+merge_hash($rc->{params}, $params, [keys(%$params)]);
+
+my $hosts  = $rc->{hosts} || {};
+my $client = gen_client($rc->{login}, $hosts);
+
+my ($ret, $err) = $cmd_sub->($client, $rc->{params}, $hosts);
 
 if ($verbose or ($err->{code} != 200)) {
     printf STDERR "%d %s\n", $err->{code}, $err->{message};
