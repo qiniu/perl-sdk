@@ -20,6 +20,7 @@ use QBox::EU;
 use QBox::UC;
 use QBox::Misc;
 use QBox::ReaderAt::File;
+use QBox::Stub;
 
 my $conf   = undef;
 my $debug  = undef;
@@ -636,7 +637,7 @@ merge_hash($rc, $conf, [keys(%$conf)]);
 my $params = get_params($args);
 merge_hash($rc->{params}, $params, [keys(%$params)]);
 
-QBox::Debug::set_stub(sub {
+QBox::Stub::set_stub(sub {
     my ($data, $title, $context) = @_;
 
     # may modify http headers
