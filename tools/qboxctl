@@ -128,7 +128,7 @@ sub get_json {
     };
 
     if ($EVAL_ERROR) {
-        return {};
+        die "${EVAL_ERROR}(text=${text})";
     }
 
     return $json;
@@ -166,7 +166,9 @@ sub read_conf {
         eval {
             $new_conf = from_json($text);
         };
-        next if ($@);
+        if ($EVAL_ERROR) {
+            die "$EVAL_ERROR(fl=${fl})";
+        }
 
         merge_hash($conf, $new_conf, [keys(%$new_conf)]);
     } # foreach
