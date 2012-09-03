@@ -135,7 +135,7 @@ sub new {
     my $client = shift;
     my $hosts  = shift || {};
 
-    $hosts->{up_host} ||= QBOX_UP_HOST;
+    $hosts->{up_host} ||= QBox::Config::QBOX_UP_HOST;
 
     my $self = {
         client => $client,
