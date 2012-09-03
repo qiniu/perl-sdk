@@ -19,7 +19,7 @@ use URI::Escape;                     # external library
 use Net::Curl::Easy qw(:constants);  # external library
 use Net::Curl::Form qw(:constants);  # external library
 
-use QBox::Debug;
+use QBox::Stub;
 
 our @ISA = qw(Exporter);
 our @EXPORT = qw(
@@ -37,8 +37,8 @@ sub qbox_curl_call_pre {
     my $curl = Net::Curl::Easy->new();
 
     my $api = $opts->{api} || 'unknown_api';
-    QBox::Debug::call_stub("${api}.url", \$url);
-    QBox::Debug::call_stub("${api}.headers", \$headers);
+    QBox::Stub::call_stub("${api}.url", \$url);
+    QBox::Stub::call_stub("${api}.headers", \$headers);
 
     $curl->setopt(CURLOPT_CUSTOMREQUEST,  'POST');
     $curl->setopt(CURLOPT_SSL_VERIFYPEER, 0);

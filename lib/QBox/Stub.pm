@@ -1,19 +1,19 @@
 #!/usr/bin/env perl
 
 # ============================================================================
-# Name        : QBox::Debug
+# Name        : QBox::Stub
 # Author      : Qiniu Developers
 # Version     : 1.0.0.0
 # Copyright   : 2012(c) Shanghai Qiniu Information Technologies Co., Ltd.
 # Description : 
 # ============================================================================
 
-package QBox::Debug;
+package QBox::Stub;
 
 use strict;
 use warnings;
 
-use constant TAG_ALL => 'all';
+use constant API_ALL => 'all';
 
 my %stub_settings = ();
 
@@ -23,7 +23,7 @@ sub set_stub {
     my $data    = shift;
     my $tag     = shift;
     
-    $tag = defined($tag) ? "$tag" : TAG_ALL;
+    $tag = defined($tag) ? "$tag" : API_ALL;
 
     if (ref($handler) eq q{CODE}) {
         $stub_settings{$tag} = {
@@ -37,9 +37,9 @@ sub set_stub {
 } # set_stub
 
 sub unset_stub {
-    my $tag = shift || TAG_ALL;
+    my $tag = shift || API_ALL;
 
-    $tag = defined($tag) ? "$tag" : TAG_ALL;
+    $tag = defined($tag) ? "$tag" : API_ALL;
 
     if (exists($stub_settings{$tag})) {
         delete($stub_settings{$tag});
@@ -55,7 +55,7 @@ sub call_stub {
         return if not $ret; # no propogation
     }
 
-    $setting =  $stub_settings{+TAG_ALL};
+    $setting =  $stub_settings{+API_ALL};
     if (defined($setting)) {
         $setting->{handler}->($setting->{data}, @_);
     }

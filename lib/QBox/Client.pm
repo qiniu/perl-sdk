@@ -18,7 +18,6 @@ use JSON;                            # external library
 use Net::Curl::Easy qw(:constants);  # external library
 use Net::Curl::Form qw(:constants);  # external library
 
-use QBox::Debug;
 use QBox::Base::Curl;
 
 our @ISA = qw(Exporter);
