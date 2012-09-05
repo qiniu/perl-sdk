@@ -6,8 +6,10 @@ use warnings;
 use English;
 use File::Basename;
 
-use JSON; # external library
+use JSON;                            # external library
+use Net::Curl::Easy qw(:constants);  # external library
 
+use QBox::Base::Curl;
 use QBox::Auth::Password;
 use QBox::Auth::Token;
 use QBox::Auth::Digest;
@@ -409,6 +411,7 @@ my %cmd_alias = (
     'pub'   => 'rs.publish',
     'unpub' => 'rs.unpublish',
     'puta'  => 'rs.put-auth',
+    'putaf' => 'rs.put-auth-file',
     'putf'  => 'rs.put-file',
     'rput'  => 'rs.resumable-put',
     'del'   => 'rs.delete',
@@ -460,10 +463,18 @@ my %cmds = (
         my ($client, $params, $hosts) = @_;
 
         my $expires_in   = get_param($params->{expires_in}, 30);
+
+        my $rs = QBox::RS->new($client, $hosts);
+        return $rs->put_auth($expires_in);
+    },
+    'rs.put-auth-ex' => sub { # command
+        my ($client, $params, $hosts) = @_;
+
+        my $expires_in   = get_param($params->{expires_in}, 30);
         my $callback_url = get_param($params->{callback_url});
 
         my $rs = QBox::RS->new($client, $hosts);
-        return $rs->put_auth($expires_in, $callback_url);
+        return $rs->put_auth_ex($expires_in, $callback_url);
     },
     'rs.put-file' => sub { # command
         my ($client, $params, $hosts) = @_;
@@ -608,6 +619,41 @@ my %ext_cmds = (
         my $eu = QBox::EU->new($client, $hosts);
         return $eu->wmset($settings);
     },
+    'rs.put-auth-file' => sub { # command extended
+        my ($client, $params, $hosts) = @_;
+
+        my ($ret, $err) = $cmds{'rs.put-auth-ex'}->(@_);
+
+        my $rs_params = $rs_get_rs_params->($params);
+        my $entry     = qbox_make_entry($rs_params->{bucket}, $rs_params->{key});
+        my $mime      = get_param($rs_params->{mime}, 'application/octet-stream');
+
+        $entry        = qbox_base64_encode_urlsafe($entry);
+        $mime         = qbox_base64_encode_urlsafe($mime);
+
+        my $body = {
+            action => "/rs-put/${entry}/mimeType/${mime}",
+            params => get_param($rs_params->{other_params}, q{}),
+        };
+        
+        my $file_body = {
+            file => $rs_params->{src_file},
+        };
+
+        if ($verbose) {
+            printf STDERR "putaf : body=%s\n", fmt_json($body);
+            printf STDERR "putaf : file=%s\n", fmt_json($file_body);
+        }
+
+        my $form = qbox_curl_make_multipart_form($body, $file_body);
+        my $curl = qbox_curl_call_pre(
+            $ret->{url},
+            undef,
+            { 'api' => 'rs.put-auth-file' }
+        );
+        $curl->setopt(CURLOPT_HTTPPOST, $form);
+        return qbox_curl_call_core($curl);
+    },
 );
 
 my ($args, $opts) = get_opts(\@ARGV);
@@ -643,9 +689,13 @@ QBox::Stub::set_stub(sub {
     my ($data, $title, $context) = @_;
 
     # may modify http headers
-    if ($title =~ m/[.]headers$/) {
-        mod_http_headers($rc->{headers}{$title} || {}, $context);
-        mod_http_headers($rc->{headers}{all} || {}, $context);
+    if ($title =~ m/^(.+)[.]headers$/) {
+        if (ref($rc->{headers}{$1}) eq 'HASH') {
+            mod_http_headers($rc->{headers}{$1}, $context);
+        }
+        if (ref($rc->{headers}{all}) eq 'HASH') {
+            mod_http_headers($rc->{headers}{all}, $context);
+        }
     }
 
     # may echo context
