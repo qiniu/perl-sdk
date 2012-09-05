@@ -15,11 +15,19 @@ use warnings;
 
 use Net::Curl::Easy qw(:constants);  # external library
 
+use QBox::Stub;
 use QBox::Config;
 use QBox::Base::Curl;
 
+use constant API_EXCHANGE        => 'acc.exchange';
+use constant API_EXCHANGE_RESULT => 'acc.exchange.result';
+
 our @ISA = qw(Exporter);
 our @EXPORT = qw(
+    qbox_token_init
+    qbox_token_access
+    qbox_token_exchange_by_password
+    qbox_token_exchange_by_refresh_token
 );
 
 ### procedures
@@ -28,12 +36,14 @@ my $exchange = sub {
     my $query = shift;
 
     my $url = "$self->{hosts}{ac_host}/oauth2/token";
-    my $curl = qbox_curl_call_pre($url);
+    my $curl = qbox_curl_call_pre($url, undef, { 'api' => API_EXCHANGE });
 
     my $form = qbox_curl_make_form($query);
     $curl->setopt(CURLOPT_POSTFIELDS, $form);
 
     my ($ret, $err) = qbox_curl_call_core($curl);
+
+    QBox::Stub::call_stub(API_EXCHANGE_RESULT, \{ 'ret' => $ret, 'err' => $err });
 
     if ($err->{code} != 200) {
         return $err;
@@ -53,6 +63,22 @@ my $exchange = sub {
 
     return $err;
 };
+
+sub qbox_token_init {
+    return &new;
+} # qbox_token_init
+
+sub qbox_token_access {
+    return &access;
+} # qbox_token_access
+
+sub qbox_token_exchange_by_password {
+    return &exchange_by_password;
+} # qbox_token_exchange_by_password
+
+sub qbox_token_exchange_by_refresh_token {
+    return &exchange_by_refresh_token;
+} # qbox_token_exchange_by_refresh_token
 
 ### for OOP
 sub new {
