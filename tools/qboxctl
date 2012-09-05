@@ -623,6 +623,7 @@ my %ext_cmds = (
         my ($client, $params, $hosts) = @_;
 
         my ($ret, $err) = $cmds{'rs.put-auth-ex'}->(@_);
+        return $ret, $err if ($err->{code} != 200);
 
         my $rs_params = $rs_get_rs_params->($params);
         my $entry     = qbox_make_entry($rs_params->{bucket}, $rs_params->{key});
