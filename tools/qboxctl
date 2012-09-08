@@ -39,14 +39,14 @@ sub fmt_json {
     return to_json($obj);
 } # fmt_json
 
-sub get_param {
+sub pickup_param {
     foreach my $p (@_) {
         if (defined($p)) {
             return $p;
         }
     } # foreach
     return undef;
-} # get_param
+} # pickup_param
 
 sub get_opts {
     my $args  = shift;
@@ -89,10 +89,10 @@ sub get_opts {
     return $fixed, $opts;
 } # get_opts
 
-sub get_params {
+sub parse_params {
     my $args = shift;
     return { map { split('=', $_, 2) } @$args };
-} # get_params
+} # parse_params
 
 sub merge_hash {
     my $to   = shift;
@@ -182,10 +182,10 @@ sub gen_client {
     my $login = shift;
     my $hosts  = shift;
 
-    my $client_id     = get_param($login->{client_id});
-    my $client_secret = get_param($login->{client_secret});
-    my $username      = get_param($login->{username});
-    my $password      = get_param($login->{password});
+    my $client_id     = pickup_param($login->{client_id});
+    my $client_secret = pickup_param($login->{client_secret});
+    my $username      = pickup_param($login->{username});
+    my $password      = pickup_param($login->{password});
 
     if (defined($username) and defined($password)) {
         my $token = QBox::Auth::Token->new($hosts, $client_id, $client_secret);
@@ -193,10 +193,10 @@ sub gen_client {
         return QBox::Client->new($auth);
     }
 
-    my $acs_key = get_param($login->{acs_key}, 'Put your ACCESS KEY here');
-    my $scr_key = get_param($login->{scr_key}, 'Put your SECRET KEY here');
+    my $acs_key = pickup_param($login->{acs_key}, 'Put your ACCESS KEY here');
+    my $scr_key = pickup_param($login->{scr_key}, 'Put your SECRET KEY here');
 
-    my $policy = get_param($login->{policy});
+    my $policy = pickup_param($login->{policy});
     if (defined($policy) and $policy ne q{}) {
         if (ref($policy) eq q{}) {
             $policy = from_json($policy);
@@ -211,27 +211,28 @@ sub gen_client {
 } # gen_client
 
 ### rs
-my $rs_get_rs_params = sub {
+my $rs_get_params = sub {
     my $params = shift;
 
     my $rs_params = {};
 
-    $rs_params->{src_file}        = get_param($params->{src}, q{});
-    $rs_params->{bucket}          = get_param($params->{bkt}, 'Bucket');
-    $rs_params->{key}             = get_param($params->{key}, basename($rs_params->{src_file}));
-    $rs_params->{mime}            = get_param($params->{mime}, 'application/octet-stream');
-    $rs_params->{meta}            = get_param($params->{meta});
-    $rs_params->{other_params}    = get_param($params->{params});
-    $rs_params->{callback_params} = get_param($params->{callback_params});
+    $rs_params->{src_file}        = pickup_param($params->{src}, q{});
+    $rs_params->{bucket}          = pickup_param($params->{bkt}, 'Bucket');
+    $rs_params->{key}             = pickup_param($params->{key}, basename($rs_params->{src_file}));
+    $rs_params->{mime}            = pickup_param($params->{mime}, 'application/octet-stream');
+    $rs_params->{meta}            = pickup_param($params->{meta});
+    $rs_params->{other_params}    = pickup_param($params->{params});
+    $rs_params->{callback_params} = pickup_param($params->{callback_params});
 
-    $rs_params->{attr}            = get_param($params->{attr});
-    $rs_params->{base}            = get_param($params->{base});
-    $rs_params->{domain}          = get_param($params->{domain});
+    $rs_params->{attr}            = pickup_param($params->{attr});
+    $rs_params->{base}            = pickup_param($params->{base});
+    $rs_params->{domain}          = pickup_param($params->{domain});
 
     return $rs_params;
 };
 
-my $read_progress_as_plain_text = sub {
+### up
+my $up_read_progress_as_plain_text = sub {
     my $fh = shift;
 
     my $prog = {};
@@ -281,7 +282,7 @@ my $read_progress_as_plain_text = sub {
     return $prog;
 };
 
-my $read_progress = sub {
+my $up_read_progress = sub {
     my $params = shift;
     
     my $prog_fl = $params->{prog_fl};
@@ -297,14 +298,14 @@ my $read_progress = sub {
         $prog = from_json($text);
     }
     else {
-        $prog = $read_progress_as_plain_text->($fh);
+        $prog = $up_read_progress_as_plain_text->($fh);
     }
 
     close($fh);
     return $prog;
 };
 
-my $write_progress_as_plain_text = sub {
+my $up_up_write_progress_as_plain_text = sub {
     my $fh   = shift;
     my $prog = shift;
 
@@ -321,7 +322,7 @@ my $write_progress_as_plain_text = sub {
     } # foreach
 };
 
-my $write_progress = sub {
+my $up_write_progress = sub {
     my $params = shift;
     my $prog   = shift;
 
@@ -334,13 +335,13 @@ my $write_progress = sub {
         printf {$fh} "%s", to_json($prog, { pretty => 1 });
     }
     else {
-        $write_progress_as_plain_text->($fh, $prog);
+        $up_up_write_progress_as_plain_text->($fh, $prog);
     }
 
     close($fh);
 };
 
-my $blk_abort = sub {
+my $up_blk_abort = sub {
     my $params    = shift;
     my $blk_index = shift;
     my $checksum  = shift;
@@ -353,16 +354,16 @@ my $blk_abort = sub {
     return 1;
 };
 
-my $blk_notify = sub {
+my $up_blk_notify = sub {
     my $params    = shift;
     my $blk_index = shift;
     my $checksum  = shift;
 
     printf "blk_index=%d, checksum=[%s]\n", $blk_index, $checksum->{value};
-    $blk_abort->($params, $blk_index, $checksum);
+    $up_blk_abort->($params, $blk_index, $checksum);
 };
 
-my $chk_abort = sub {
+my $up_chk_abort = sub {
     my $params    = shift;
     my $blk_index = shift;
     my $prog      = shift;
@@ -378,14 +379,14 @@ my $chk_abort = sub {
     return 1;
 };
 
-my $chk_notify = sub {
+my $up_chk_notify = sub {
     my $params    = shift;
     my $blk_index = shift;
     my $prog      = shift;
 
     printf "blk_index=%d, uploaded=%d, rest=%d, ctx=[%s]\n",
         $blk_index, $prog->{offset}, $prog->{rest_size}, $prog->{ctx};
-    $chk_abort->($params, $blk_index, $prog);
+    $up_chk_abort->($params, $blk_index, $prog);
 };
 
 ### eu
@@ -393,7 +394,7 @@ my $eu_gen_settings = sub {
     my $params   = shift;
     my $settings = shift || {};
 
-    my $wms   = get_param($params->{wms});
+    my $wms   = pickup_param($params->{wms});
     my $names = QBox::EU::wm_setting_names();
 
     merge_hash($settings, $conf, $names);
@@ -429,7 +430,7 @@ my %cmds = (
     'rs.get' => sub { # command
         my ($client, $params, $hosts) = @_;
 
-        my $rs_params = $rs_get_rs_params->($params);
+        my $rs_params = $rs_get_params->($params);
         my $rs = QBox::RS->new($client, $hosts);
         return $rs->get(
             $rs_params->{bucket},
@@ -441,28 +442,28 @@ my %cmds = (
     'rs.stat' => sub { # command
         my ($client, $params, $hosts) = @_;
 
-        my $rs_params = $rs_get_rs_params->($params);
+        my $rs_params = $rs_get_params->($params);
         my $rs = QBox::RS->new($client, $hosts);
         return $rs->stat($rs_params->{bucket}, $rs_params->{key});
     },
     'rs.publish' => sub { # command
         my ($client, $params, $hosts) = @_;
 
-        my $rs_params = $rs_get_rs_params->($params);
+        my $rs_params = $rs_get_params->($params);
         my $rs = QBox::RS->new($client, $hosts);
         return $rs->publish($rs_params->{bucket}, $rs_params->{domain});
     },
     'rs.unpublish' => sub { # command
         my ($client, $params, $hosts) = @_;
 
-        my $rs_params = $rs_get_rs_params->($params);
+        my $rs_params = $rs_get_params->($params);
         my $rs = QBox::RS->new($client, $hosts);
         return $rs->unpublish($rs_params->{domain});
     },
     'rs.put-auth' => sub { # command
         my ($client, $params, $hosts) = @_;
 
-        my $expires_in   = get_param($params->{expires_in}, 30);
+        my $expires_in   = pickup_param($params->{expires_in}, 30);
 
         my $rs = QBox::RS->new($client, $hosts);
         return $rs->put_auth($expires_in);
@@ -470,8 +471,8 @@ my %cmds = (
     'rs.put-auth-ex' => sub { # command
         my ($client, $params, $hosts) = @_;
 
-        my $expires_in   = get_param($params->{expires_in}, 30);
-        my $callback_url = get_param($params->{callback_url});
+        my $expires_in   = pickup_param($params->{expires_in}, 30);
+        my $callback_url = pickup_param($params->{callback_url});
 
         my $rs = QBox::RS->new($client, $hosts);
         return $rs->put_auth_ex($expires_in, $callback_url);
@@ -479,7 +480,7 @@ my %cmds = (
     'rs.put-file' => sub { # command
         my ($client, $params, $hosts) = @_;
 
-        my $rs_params = $rs_get_rs_params->($params);
+        my $rs_params = $rs_get_params->($params);
 
         my $rs = QBox::RS->new($client, $hosts);
         return $rs->put_file(
@@ -493,18 +494,18 @@ my %cmds = (
     'rs.resumable-put' => sub { # command
         my ($client, $params, $hosts) = @_;
 
-        my $rs_params = $rs_get_rs_params->($params);
+        my $rs_params = $rs_get_params->($params);
 
         my $fsize     = (stat($rs_params->{src_file}))[7];
         my $reader_at = QBox::ReaderAt::File->new($rs_params->{src_file});
 
-        my $notify_blk = get_param($params->{notify_blk});
-        my $notify_chk = get_param($params->{notify_chk});
+        my $notify_blk = pickup_param($params->{notify_blk});
+        my $notify_chk = pickup_param($params->{notify_chk});
 
         my $notify_params = {};
-        $notify_params->{stop_idx}  = get_param($params->{stop_idx});
-        $notify_params->{stop_size} = get_param($params->{stop_size});
-        $notify_params->{prog_fl}   = get_param($params->{prog_fl});
+        $notify_params->{stop_idx}  = pickup_param($params->{stop_idx});
+        $notify_params->{stop_size} = pickup_param($params->{stop_size});
+        $notify_params->{prog_fl}   = pickup_param($params->{prog_fl});
 
         if (defined($notify_params->{stop_size})) {
             $notify_params->{stop_idx} ||= 0;
@@ -512,13 +513,13 @@ my %cmds = (
 
         my $ret  = undef;
         my $err  = undef;
-        my $prog = $read_progress->($notify_params);
+        my $prog = $up_read_progress->($notify_params);
 
         my $rs = QBox::RS->new($client, $hosts);
         ($ret, $err, $prog) = $rs->resumale_put(
             $prog,
-            defined($notify_blk) ? $blk_notify : $blk_abort,
-            defined($notify_chk) ? $chk_notify : $chk_abort,
+            defined($notify_blk) ? $up_blk_notify : $up_blk_abort,
+            defined($notify_chk) ? $up_chk_notify : $up_chk_abort,
             $notify_params,
             qbox_make_entry($rs_params->{bucket}, $rs_params->{key}),
             $rs_params->{mime},
@@ -530,7 +531,7 @@ my %cmds = (
         );
 
         if ($err->{code} != 200) {
-            $write_progress->($notify_params, $prog);
+            $up_write_progress->($notify_params, $prog);
         }
         elsif ($notify_params->{prog_fl} and -w $notify_params->{prog_fl}) {
             unlink($notify_params->{prog_fl});
@@ -541,22 +542,22 @@ my %cmds = (
     'rs.delete' => sub { # command
         my ($client, $params, $hosts) = @_;
 
-        my $rs_params = $rs_get_rs_params->($params);
+        my $rs_params = $rs_get_params->($params);
         my $rs = QBox::RS->new($client, $hosts);
         return $rs->delete($rs_params->{bucket}, $rs_params->{key});
     },
     'rs.drop' => sub { # command
         my ($client, $params, $hosts) = @_;
 
-        my $rs_params = $rs_get_rs_params->($params);
+        my $rs_params = $rs_get_params->($params);
         my $rs = QBox::RS->new($client, $hosts);
         return $rs->drop($rs_params->{bucket});
     },
     'up.query' => sub { # command
         my ($client, $params, $hosts) = @_;
 
-        my $prog_fl = get_param($params->{prog_fl});
-        my $prog    = $read_progress->({ prog_fl => $prog_fl });
+        my $prog_fl = pickup_param($params->{prog_fl});
+        my $prog    = $up_read_progress->({ prog_fl => $prog_fl });
 
         if (not defined($prog)) {
             return undef, { code => 299, message => 'No correct progress infomation.' };
@@ -568,7 +569,7 @@ my %cmds = (
     'eu.wmget' => sub { # command
         my ($client, $params, $hosts) = @_;
 
-        my $customer = get_param($params->{customer});
+        my $customer = pickup_param($params->{customer});
         my $eu = QBox::EU->new($client, $hosts);
         return $eu->wmget($customer);
     },
@@ -582,7 +583,7 @@ my %cmds = (
     'uc.app-info' => sub { # command
         my ($client, $params, $hosts) = @_;
 
-        my $app = get_param($params->{app});
+        my $app = pickup_param($params->{app});
 
         my $uc = QBox::UC->new($client, $hosts);
         return $uc->app_info($app);
@@ -590,7 +591,7 @@ my %cmds = (
     'uc.new-access' => sub { # command
         my ($client, $params, $hosts) = @_;
 
-        my $app = get_param($params->{app});
+        my $app = pickup_param($params->{app});
 
         my $uc = QBox::UC->new($client, $hosts);
         return $uc->new_access($app);
@@ -598,8 +599,8 @@ my %cmds = (
     'uc.delete-access' => sub { # command
         my ($client, $params, $hosts) = @_;
 
-        my $app     = get_param($params->{app});
-        my $acs_key = get_param($params->{acs_key});
+        my $app     = pickup_param($params->{app});
+        my $acs_key = pickup_param($params->{acs_key});
 
         my $uc = QBox::UC->new($client, $hosts);
         return $uc->delete_access($app, $acs_key);
@@ -625,16 +626,16 @@ my %ext_cmds = (
         my ($ret, $err) = $cmds{'rs.put-auth-ex'}->(@_);
         return $ret, $err if ($err->{code} != 200);
 
-        my $rs_params = $rs_get_rs_params->($params);
+        my $rs_params = $rs_get_params->($params);
         my $entry     = qbox_make_entry($rs_params->{bucket}, $rs_params->{key});
-        my $mime      = get_param($rs_params->{mime}, 'application/octet-stream');
+        my $mime      = pickup_param($rs_params->{mime}, 'application/octet-stream');
 
         $entry        = qbox_base64_encode_urlsafe($entry);
         $mime         = qbox_base64_encode_urlsafe($mime);
 
         my $body = {
             action => "/rs-put/${entry}/mimeType/${mime}",
-            params => get_param($rs_params->{other_params}, q{}),
+            params => pickup_param($rs_params->{other_params}, q{}),
         };
         
         my $file_body = {
@@ -683,7 +684,7 @@ my $rc = {
 
 merge_hash($rc, $conf, [keys(%$conf)]);
 
-my $params = get_params($args);
+my $params = parse_params($args);
 merge_hash($rc->{params}, $params, [keys(%$params)]);
 
 QBox::Stub::set_stub(sub {
