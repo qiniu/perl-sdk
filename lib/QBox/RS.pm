@@ -24,7 +24,7 @@ use QBox::Misc;
 
 use constant API_GET         => 'rs.get';
 use constant API_PUT         => 'rs.put';
-use constant API_PUT_AUTH_EX => 'rs.put_auth_ex';
+use constant API_PUT_AUTH_EX => 'rs.put-auth-ex';
 use constant API_STAT        => 'rs.stat';
 use constant API_PUBLISH     => 'rs.publish';
 use constant API_UNPUBLISH   => 'rs.unpublish';

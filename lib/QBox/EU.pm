@@ -17,7 +17,7 @@ use QBox::Config;
 
 use constant API_WMSET       => 'eu.wmset';
 use constant API_WMGET       => 'eu.wmget';
-use constant API_ADMIN_WMGET => 'eu.admin_wmget';
+use constant API_ADMIN_WMGET => 'eu.admin-wmget';
 
 ### for OOP
 my $qbox_eu_wmget = sub {

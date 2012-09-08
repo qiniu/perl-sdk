@@ -15,9 +15,9 @@ use warnings;
 
 use QBox::Config;
 
-use constant API_APP_INFO      => 'uc.app_info';
-use constant API_NEW_ACCESS    => 'uc.new_access';
-use constant API_DELETE_ACCESS => 'uc.delete_access';
+use constant API_APP_INFO      => 'uc.app-info';
+use constant API_NEW_ACCESS    => 'uc.new-access';
+use constant API_DELETE_ACCESS => 'uc.delete-access';
 
 sub new {
     my $class = shift || __PACKAGE__;
