@@ -114,11 +114,9 @@ sub new {
 } # new
 
 sub get {
-    my $self      = shift;
-    my $bucket    = shift;
-    my $key       = shift;
-    my $attr_name = shift;
-    my $base      = shift;
+    my $self = shift;
+    my ($bucket, $key, $attr, $base, $opts) =
+        qbox_extract_args([qw{bucket key attr base}], @_);
 
     return undef, { code => 499, message => 'Invalid bucket' } if (not defined($bucket));
     return undef, { code => 499, message => 'Invalid key' } if (not defined($key));
@@ -132,20 +130,19 @@ sub get {
         'get' => $encoded_entry,
     );
 
-    $base      = defined($base)      ? "$base"      : q{};
-    $attr_name = defined($attr_name) ? "$attr_name" : q{};
-
-    if ($base ne q{}) {
-        push @args, 'base', $base;
+    if (defined($base) and "$base" ne q{}) {
+        push @args, 'base', "$base";
     }
 
-    if ($attr_name ne q{}) {
-        $attr_name = qbox_base64_encode_urlsafe($attr_name);
-        push @args, 'attName', $attr_name;
+    if (defined($attr) and "$attr" ne q{}) {
+        $attr = qbox_base64_encode_urlsafe("$attr");
+        push @args, 'attName', $attr;
     }
 
+    $opts ||= {};
+    $opts->{api} = API_GET;
     my $url = join('/', @args);
-    return $self->{client}->call($url, { 'api' => API_GET });
+    return $self->{client}->call($url, $opts);
 } # get
 
 sub get_if_not_modified {
@@ -153,21 +150,16 @@ sub get_if_not_modified {
 } # get_if_not_modified
 
 sub put {
-    my $self        = shift;
-    my $bucket      = shift;
-    my $key         = shift;
-    my $mime_type   = shift;
-    my $reader      = shift;
-    my $fsize       = shift;
-    my $custom_meta = shift;
+    my $self = shift;
+    my ($bucket, $key, $mime_type, $reader, $fsize, $custom_meta, $opts) =
+        qbox_extract_args([qw{bucket key mime_type reader fsize custom_meta}], @_);
 
     return undef, { code => 499, message => 'Invalid bucket' } if (not defined($bucket));
     return undef, { code => 499, message => 'Invalid key' } if (not defined($key));
 
     $bucket      = "$bucket";
     $key         = "$key";
-    $mime_type   = defined($mime_type)   ? "$mime_type"   : q{application/octet-stream};
-    $custom_meta = defined($custom_meta) ? "$custom_meta" : q{};
+    $mime_type   = defined($mime_type) ? "$mime_type" : q{application/octet-stream};
 
     my $encoded_entry = qbox_base64_encode_urlsafe(qbox_make_entry($bucket, $key));
     $mime_type = qbox_base64_encode_urlsafe($mime_type);
@@ -178,27 +170,21 @@ sub put {
         'mime'   => $mime_type,
     );
 
-    if ($custom_meta ne q{}) {
-        $custom_meta = qbox_base64_encode_urlsafe($custom_meta);
+    if (defined($custom_meta) and "$custom_meta" ne q{}) {
+        $custom_meta = qbox_base64_encode_urlsafe("$custom_meta");
         push @args, 'meta', $custom_meta;
     }
 
+    $opts ||= {};
+    $opts->{api} = API_PUT;
     my $url = join('/', @args);
-    return $self->{client}->call_with_binary(
-        $url,
-        $reader,
-        $fsize,
-        { 'api' => API_PUT }
-    );
+    return $self->{client}->call_with_binary($url, $reader, $fsize, $opts);
 } # put
 
 sub put_file {
-    my $self        = shift;
-    my $bucket      = shift;
-    my $key         = shift;
-    my $mime_type   = shift;
-    my $file        = shift;
-    my $custom_meta = shift;
+    my $self = shift;
+    my ($bucket, $key, $mime_type, $file, $custom_meta, $opts) =
+        qbox_extract_args([qw{bucket key mime_type file custom_meta}], @_);
 
     return undef, { code => 499, message => 'Invalid file' } if (not defined($file));
 
@@ -209,21 +195,21 @@ sub put_file {
     my $reader = QBox::Reader::File->new({ file => $file });
 
     # forward invocation
-    return $self->put($bucket, $key, $mime_type, $reader, $fsize, $custom_meta);
+    return $self->put($bucket, $key, $mime_type, $reader, $fsize, $custom_meta, $opts);
 } # put_file
 
 # may be deprecated
 sub put_auth {
     my $self       = shift;
     my $expires_in = shift || 10;
-    return $self->put_auth_ex($expires_in);
+    return $self->put_auth_ex($expires_in, @_);
 } # put_auth
 
 # may be deprecated
 sub put_auth_ex {
-    my $self       = shift;
-    my $expires_in = shift;
-    my $callback   = shift;
+    my $self = shift;
+    my ($expires_in, $callback, $opts) =
+        qbox_extract_args([qw{expires_in callback}], @_);
 
     return undef, { code => 499, message => 'Invalid expiry' } if (not defined($expires_in));
 
@@ -237,48 +223,48 @@ sub put_auth_ex {
         push @args, 'callback', $callback;
     }
 
+    $opts ||= {};
+    $opts->{api} = API_PUT_AUTH_EX;
     my $url = join('/', @args);
-    return $self->{client}->call($url, { 'api' => API_PUT_AUTH_EX });
+    return $self->{client}->call($url, $opts);
 } # put_auth_ex
 
 sub resumale_put {
-    my $self            = shift;
-    my $prog            = shift;
-    my $blk_notify      = shift;
-    my $chk_notify      = shift;
-    my $notify_params   = shift;
-    my $entry           = shift;
-    my $mime_type       = shift;
-    my $reader_at       = shift;
-    my $fsize           = shift;
-    my $custom_meta     = shift;
-    my $other_params    = shift;
-    my $callback_params = shift;
+    my $self = shift;
+    my ($prog, $blk_notify, $chk_notify, $notify_params,
+        $entry, $mime_type, $reader_at, $fsize,
+        $custom_meta, $params, $callback_params, $opts) =
+        qbox_extract_args([qw{
+        prog blk_notify chk_notify notify_params
+        entry mime_type reader_at fsize
+        custom_meta params callback_params}], @_);
 
     return undef, { code => 499, message => 'Invalid entry' } if (not defined($entry));
     return undef, { code => 499, message => 'Invalid file size' } if (not defined($fsize));
 
-    $entry           = "$entry";
-    $mime_type       = defined($mime_type)       ? "$mime_type"       : q{application/octet-stream};
-    $custom_meta     = defined($custom_meta)     ? "$custom_meta"     : q{};
-    $other_params    = defined($other_params)    ? "$other_params"    : q{};
-    $callback_params = defined($callback_params) ? "$callback_params" : q{};
+    $entry     = "$entry";
+    $mime_type = defined($mime_type) ? "$mime_type" : q{application/octet-stream};
 
     $prog ||= QBox::UP::new_progress($fsize);
 
     my $up = QBox::UP->new($self->{client}, $self->{hosts});
-    my ($ret, $err) = $up->put($reader_at, $fsize, $prog, $blk_notify, $chk_notify, $notify_params);
-    if ($err->{code} != 200) {
-        return $ret, $err, $prog;
-    }
+    my ($ret, $err) = $up->put(
+        $reader_at,
+        $fsize,
+        $prog,
+        $blk_notify,
+        $chk_notify,
+        $notify_params,
+        $opts
+    );
+    return $ret, $err, $prog if ($err->{code} != 200);
 
     my @new_params = ();
-
-    if ($other_params ne q{}) {
-        push @new_params, $other_params;
+    if (defined($params) and "$params" ne q{}) {
+        push @new_params, "$params";
     }
-    if ($custom_meta ne q{}) {
-        push @new_params, 'meta', qbox_base64_encode_urlsafe($custom_meta);
+    if (defined($custom_meta) and "$custom_meta" ne q{}) {
+        push @new_params, 'meta', qbox_base64_encode_urlsafe("$custom_meta");
     }
 
     my $new_params = join('/', @new_params);
@@ -291,19 +277,16 @@ sub resumale_put {
         $callback_params,
         $prog->{checksums},
         $prog->{blk_count},
+        $opts
     );
-
-    if ($err->{code} != 200) {
-        return $ret, $err, $prog;
-    }
+    return $ret, $err, $prog if ($err->{code} != 200);
 
     return $ret, $err, undef;
 } # resumale_put
 
 sub stat {
-    my $self   = shift;
-    my $bucket = shift;
-    my $key    = shift;
+    my $self = shift;
+    my ($bucket, $key, $opts) = qbox_extract_args([qw{bucket key}], @_);
 
     return undef, { code => 499, message => 'Invalid bucket' } if (not defined($bucket));
     return undef, { code => 499, message => 'Invalid key' } if (not defined($key));
@@ -311,15 +294,16 @@ sub stat {
     $bucket = "$bucket";
     $key    = "$key";
 
+    $opts ||= {};
+    $opts->{api} = API_STAT;
     my $encoded_entry = qbox_base64_encode_urlsafe(qbox_make_entry($bucket, $key)); 
     my $url = "$self->{hosts}{rs_host}/stat/${encoded_entry}";
-    return $self->{client}->call($url, { 'api' => API_STAT });
+    return $self->{client}->call($url, $opts);
 } # stat
 
 sub publish {
-    my $self   = shift;
-    my $bucket = shift;
-    my $domain = shift;
+    my $self = shift;
+    my ($bucket, $domain, $opts) = qbox_extract_args([qw{bucket domain}], @_);
 
     return undef, { code => 499, message => 'Invalid bucket' } if (not defined($bucket));
     return undef, { code => 499, message => 'Invalid domain' } if (not defined($domain));
@@ -327,28 +311,31 @@ sub publish {
     $bucket = "$bucket";
     $domain = "$domain";
 
+    $opts ||= {};
+    $opts->{api} = API_PUBLISH;
     my $encoded_domain = qbox_base64_encode_urlsafe($domain); 
     my $url = "$self->{hosts}{rs_host}/publish/${encoded_domain}/from/${bucket}";
-    return $self->{client}->call($url, { 'api' => API_PUBLISH });
+    return $self->{client}->call($url, $opts);
 } # publish
 
 sub unpublish {
-    my $self   = shift;
-    my $domain = shift;
+    my $self = shift;
+    my ($domain, $opts) = qbox_extract_args([qw{domain}], @_);
 
     return undef, { code => 499, message => 'Invalid domain' } if (not defined($domain));
 
     $domain = "$domain";
 
+    $opts ||= {};
+    $opts->{api} = API_UNPUBLISH;
     my $encoded_domain = qbox_base64_encode_urlsafe($domain); 
     my $url = "$self->{hosts}{rs_host}/unpublish/${encoded_domain}";
-    return $self->{client}->call($url, { 'api' => API_UNPUBLISH });
+    return $self->{client}->call($url, $opts);
 } # unpublish
 
 sub delete {
-    my $self   = shift;
-    my $bucket = shift;
-    my $key    = shift;
+    my $self = shift;
+    my ($bucket, $key, $opts) = qbox_extract_args([qw{bucket key}], @_);
 
     return undef, { code => 499, message => 'Invalid bucket' } if (not defined($bucket));
     return undef, { code => 499, message => 'Invalid key' } if (not defined($key));
@@ -356,21 +343,25 @@ sub delete {
     $bucket = "$bucket";
     $key    = "$key";
 
+    $opts ||= {};
+    $opts->{api} = API_DELETE;
     my $encoded_entry = qbox_base64_encode_urlsafe(qbox_make_entry($bucket, $key)); 
     my $url = "$self->{hosts}{rs_host}/delete/${encoded_entry}";
-    return $self->{client}->call($url, { 'api' => API_DELETE });
+    return $self->{client}->call($url, $opts);
 } # delete
 
 sub drop {
-    my $self   = shift;
-    my $bucket = shift;
+    my $self = shift;
+    my ($bucket, $opts) = qbox_extract_args([qw{bucket}], @_);
 
     return undef, { code => 499, message => 'Invalid bucket' } if (not defined($bucket));
 
     $bucket = "$bucket";
 
+    $opts ||= {};
+    $opts->{api} = API_DROP;
     my $url = "$self->{hosts}{rs_host}/drop/${bucket}";
-    return $self->{client}->call($url, { 'api' => API_DROP });
+    return $self->{client}->call($url, $opts);
 } # drop
 
 1;

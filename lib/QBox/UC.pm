@@ -35,47 +35,49 @@ sub new {
 
 sub app_info {
     my $self = shift;
-    my $app  = shift;
+    my ($app, $opts) = qbox_extract_args([qw{app}], @_);
 
+    $opts ||= {};
+    $opts->{api} = API_APP_INFO;
     my $query = { app => $app };
-
     my $url = "$self->{hosts}{uc_host}/appInfo";
     return $self->{client}->call_with_form(
         $url,
         $query,
         undef,  # no body length
-        { 'api' => API_APP_INFO }
+        $opts
     );
 } # app_info
 
 sub new_access {
     my $self = shift;
-    my $app  = shift;
+    my ($app, $opts) = qbox_extract_args([qw{app}], @_);
 
+    $opts ||= {};
+    $opts->{api} = API_NEW_ACCESS;
     my $query = { app => $app };
-
     my $url = "$self->{hosts}{uc_host}/newAccess";
     return $self->{client}->call_with_form(
         $url,
         $query,
         undef,
-        { 'api' => API_NEW_ACCESS }
+        $opts
     );
 } # new_access
 
 sub delete_access {
-    my $self    = shift;
-    my $app     = shift;
-    my $acs_key = shift;
+    my $self = shift;
+    my ($app, $acs_key, $opts) = qbox_extract_args([qw{app access_key}], @_);
 
+    $opts ||= {};
+    $opts->{api} = API_DELETE_ACCESS;
     my $query = { app => $app, key => $acs_key };
-
     my $url = "$self->{hosts}{uc_host}/deleteAccess";
     return $self->{client}->call_with_form(
         $url,
         $query,
         undef,
-        { 'api' => API_DELETE_ACCESS }
+        $opts
     );
 } # delete_access
 

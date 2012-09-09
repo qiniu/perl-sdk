@@ -22,6 +22,7 @@ our @EXPORT = qw(
     qbox_base64_decode
     qbox_base64_decode_urlsafe
     qbox_make_entry
+    qbox_extract_args
 );
 
 sub qbox_base64_encode {
@@ -54,6 +55,16 @@ sub qbox_make_entry {
     my $key    = shift;
     return "${bucket}:${key}";
 } # qbox_make_entry
+
+sub qbox_extract_args {
+    my $arg_list = shift;
+    if (scalar(@_) == 2 and ref($_[0]) eq 'HASH' and ref($_[1]) eq 'HASH') {
+        push @$arg_list, 'opts';
+        $_[0]->{opts} = $_[1];
+        return map { $_[0]->{$_} } @$arg_list;
+    }
+    return splice @_, 0, scalar(@$arg_list);
+} # qbox_extract_args
 
 1;
 

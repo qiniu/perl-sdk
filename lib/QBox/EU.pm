@@ -27,10 +27,10 @@ my $qbox_eu_wmget = sub {
     my $query    = shift || {};
     my $opts     = shift || {}; 
 
-    $opts->{api} = $api;
+    $opts->{api} ||= $api;
 
-    if (defined($customer) and $customer ne q{}) {
-        $query->{customer} = $customer;
+    if (defined($customer) and "$customer" ne q{}) {
+        $query->{customer} = "$customer";
     }
 
     my $url = "$self->{hosts}{eu_host}/${api}";
@@ -85,8 +85,8 @@ sub wm_setting_names {
 } # wm_setting_names 
 
 sub wmset {
-    my $self     = shift;
-    my $settings = shift;
+    my $self = shift;
+    my ($settings, $opts) = qbox_extract_args([qw{settings}], @_);
 
     my $new_settings = {};
     foreach my $key (keys(%$settings)) {
@@ -99,34 +99,37 @@ sub wmset {
         }
     } # foreach
 
+    $opts ||= {};
+    $opts->{api} = API_WMSET;
     my $url = "$self->{hosts}{eu_host}/wmset";
     return $self->{client}->call_with_multipart_form(
         $url,
         $new_settings,
         undef,           # no body length
-        { 'api' => 'eu.wmset' }
+        $opts
     );
 } # wmset
 
 sub wmget {
-    my $self     = shift;
-    my $customer = shift;
-    my $query    = shift;
-
-    return $self->$qbox_eu_wmget('wmget', $customer, $query);
+    my $self = shift;
+    my ($customer, $query, $opts) = qbox_extract_args([qw{customer query}], @_);
+    $opts ||= {};
+    $opts->{api} = API_WMGET;
+    return $self->$qbox_eu_wmget('wmget', $customer, $query, $opts);
 } # wmget
 
 sub admin_wmget {
-    my $self     = shift;
-    my $id       = shift;
-    my $customer = shift;
+    my $self = shift;
+    my ($id, $customer, $opts) = qbox_extract_args([qw{id customer}], @_);
 
     if (not defined($id) or $id eq q{}) {
         return undef, { code => 400, message => 'Invalid UserID' };
     }
 
+    $opts ||= {};
+    $opts->{api} = API_ADMIN_WMGET;
     my $query = { id => $id };
-    return $self->$qbox_eu_wmget('admin/wmget', $customer, $query);
+    return $self->$qbox_eu_wmget('admin/wmget', $customer, $query, $opts);
 } # admin_wmget
 
 1;
