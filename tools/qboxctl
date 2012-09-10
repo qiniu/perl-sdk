@@ -1,5 +1,77 @@
 #!/usr/bin/env perl
 
+package QBox::Engine;
+
+use strict;
+use warnings;
+
+sub new {
+    my $class = shift || __PACKAGE__;
+    my $self  = {};
+    return bless $self, $class;
+} # new
+
+my %attrs = (
+    'auth'          => '',
+    'access_key'    => 'auth',
+    'secret_key'    => 'auth',
+    'client_id'     => 'auth',
+    'client_secret' => 'auth',
+    'username'      => 'auth',
+    'password'      => 'auth',
+    'policy'        => 'auth',
+
+    'hosts'         => '',
+    'ac_host'       => 'hosts',
+    'io_host'       => 'hosts',
+    'up_host'       => 'hosts',
+    'rs_host'       => 'hosts',
+    'uc_host'       => 'hosts',
+    'eu_host'       => 'hosts',
+);
+
+our $AUTOLOAD;
+sub AUTOLOAD {
+    my $nm = $AUTOLOAD;
+    $nm =~ s/^.+://;
+
+    return if (not exists($attrs{$nm}));
+
+    my $method = undef;
+    my $sub = $attrs{$nm};
+    if ($sub eq q{}) {
+        $method = sub {
+            my ($self, $new) = @_;
+            my $old = $self->{$nm};
+            if (defined($new)) {
+                $self->{$nm} = $new;
+            }
+            return $old;
+        };
+    }
+    elsif ($sub ne q{}) {
+        $method = sub {
+            my ($self, $new) = @_;
+            $self->{$sub} ||= {};
+            my $old = $self->{$sub}{$nm};
+            if (defined($new)) {
+                $self->{$sub}{$nm} = $new;
+            }
+            return $old;
+        };
+    }
+
+    if (defined($method)) {
+        no strict;
+        *$QBox::Engine::{$nm}{CODE} = $method;
+        use strict;
+
+        return &$method;
+    }
+} # AUTOLOAD
+
+package main;
+
 use strict;
 use warnings;
 
