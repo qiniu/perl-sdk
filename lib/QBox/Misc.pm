@@ -55,8 +55,8 @@ sub qbox_base64_decode_urlsafe {
 
 sub qbox_hash_merge {
     my $to   = shift;
-    my $from = shift;
-    my $base = shift;
+    my $from = shift || {};
+    my $base = shift || 'TO';
     my $keys = shift;
     
     if (defined($base) and uc("$base") eq 'FROM') {
@@ -67,6 +67,8 @@ sub qbox_hash_merge {
     }
 
     foreach my $key (@$keys) {
+        next if not exists($from->{$key});
+
         if (ref($from->{$key}) eq 'HASH') {
             $to->{$key} ||= {};
             qbox_hash_merge($to->{$key}, $from->{$key}, $base);
