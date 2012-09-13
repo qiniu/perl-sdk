@@ -21,6 +21,9 @@ our @EXPORT = qw(
     qbox_base64_encode_urlsafe
     qbox_base64_decode
     qbox_base64_decode_urlsafe
+
+    qbox_hash_merge
+
     qbox_make_entry
     qbox_extract_args
 );
@@ -49,6 +52,32 @@ sub qbox_base64_decode_urlsafe {
     $str =~ y,-_,+/,;
     return qbox_base64_decode($str);
 } # qbox_base64_decode_urlsafe
+
+sub qbox_hash_merge {
+    my $to   = shift;
+    my $from = shift;
+    my $base = shift;
+    my $keys = shift;
+    
+    if (defined($base) and uc("$base") eq 'FROM') {
+        $keys ||= [keys(%$from)];
+    }
+    else {
+        $keys ||= [keys(%$to)];
+    }
+
+    foreach my $key (@$keys) {
+        if (ref($from->{$key}) eq 'HASH') {
+            $to->{$key} ||= {};
+            qbox_hash_merge($to->{$key}, $from->{$key}, $base);
+        }
+        else {
+            $to->{$key} = $from->{$key};
+        }
+    } # foreach
+
+    return $to;
+} # qbox_hash_merge
 
 sub qbox_make_entry {
     my $bucket = shift;
