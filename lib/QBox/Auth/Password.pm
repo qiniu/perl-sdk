@@ -63,8 +63,10 @@ sub gen_headers {
     my ($acs_token, $expiry) = $self->{token}->access();
     $self->{expiry} = $expiry;
 
-    my $header = "Authorization: Bearer " . $acs_token;
-    return [$header];
+    my $headers = {
+        "Authorization" => "Bearer " . $acs_token,
+    };
+    return $headers;
 } # gen_headers
 
 1;

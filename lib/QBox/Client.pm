@@ -34,23 +34,21 @@ our @EXPORT = qw(
 my $qbox_client_gen_headers = sub {
     my $self    = shift;
     my $url     = shift;
-    my $headers = shift || [];
 
-    my $new_headers = undef;
-    my $auth        = $self->{auth};
+    my $headers = undef;
+    my $auth    = $self->{auth};
 
     if (defined($auth)) {
         my $auth_type = ref($auth);
 
         if ($auth_type eq 'HASH' and defined($auth->{gen_headers})) {
-            $new_headers = $auth->{gen_headers}($auth, $url);
+            $headers = $auth->{gen_headers}($auth, $url);
         }
         else {
-            $new_headers = $auth->gen_headers($url);
+            $headers = $auth->gen_headers($url);
         }
     }
 
-    push @{$headers}, @{$new_headers} if defined($new_headers);
     return $headers;
 };
 
@@ -92,6 +90,8 @@ sub call {
     my $opts         = shift;
 
     my $headers = $qbox_client_gen_headers->($self, $url);
+    $headers = qbox_curl_gen_headers($headers, $opts->{headers});
+
     my $curl = qbox_curl_call_pre($url, $headers, $opts);
     return qbox_curl_call_core($curl, $opts);
 } # call
@@ -107,10 +107,15 @@ sub call_with_binary {
         return undef, { code => 400, message => 'Invalid binary body' };
     }
 
-    my $headers = $qbox_client_gen_headers->($self, $url, [
-        "Content-Type: application/octet-stream",
-        "Content-Length: ${body_len}",
-    ]);
+    my $headers = $qbox_client_gen_headers->($self, $url);
+    $headers = qbox_curl_gen_headers(
+        $headers,
+        {
+            "Content-Type" => "application/octet-stream",
+            "Content-Length: ${body_len}",
+        },
+        $opts->{headers}
+    );
 
     my $curl = qbox_curl_call_pre($url, $headers, $opts);
 
@@ -133,10 +138,15 @@ sub call_with_buffer {
         return undef, { code => 400, message => 'Invalid buffer body' };
     }
 
-    my $headers = $qbox_client_gen_headers->($self, $url, [
-        "Content-Type: application/octet-stream",
-        "Content-Length: ${body_len}",
-    ]);
+    my $headers = $qbox_client_gen_headers->($self, $url);
+    $headers = qbox_curl_gen_headers(
+        $headers,
+        {
+            "Content-Type"   => "application/octet-stream",
+            "Content-Length" => "${body_len}",
+        },
+        $opts->{headers}
+    );
 
     my $curl = qbox_curl_call_pre($url, $headers, $opts);
 
@@ -159,6 +169,8 @@ sub call_with_form {
     }
 
     my $headers = $qbox_client_gen_headers->($self, $url);
+    $headers = qbox_curl_gen_headers($headers, $opts->{headers});
+
     my $curl = qbox_curl_call_pre($url, $headers, $opts);
 
     my $form = qbox_curl_make_form($body);
@@ -179,6 +191,8 @@ sub call_with_multipart_form {
     }
 
     my $headers = $qbox_client_gen_headers->($self, $url);
+    $headers = qbox_curl_gen_headers($headers, $opts->{headers});
+
     my $curl = qbox_curl_call_pre($url, $headers, $opts);
 
     my $form = qbox_curl_make_multipart_form($body);
