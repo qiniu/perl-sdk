@@ -20,6 +20,7 @@ use Net::Curl::Easy qw(:constants);  # external library
 use Net::Curl::Form qw(:constants);  # external library
 
 use QBox::Stub;
+use QBox::Misc;
 
 our @ISA = qw(Exporter);
 our @EXPORT = qw(
@@ -27,6 +28,7 @@ our @EXPORT = qw(
     qbox_curl_call_core
     qbox_curl_make_form 
     qbox_curl_make_multipart_form 
+    qbox_curl_gen_headers
 );
 
 sub qbox_curl_call_pre {
@@ -134,6 +136,23 @@ sub qbox_curl_make_multipart_form {
 
     return $form;
 } # qbox_curl_make_multipart_form
+
+sub qbox_curl_gen_headers {
+    my $origin = shift;
+    my $custom = shift;
+
+    my %headers = ();
+    qbox_hash_merge(\%headers, $origin, 'FROM');
+    qbox_hash_merge(\%headers, $custom, 'FROM');
+
+    my $headers = map {
+        "$_: $headers{$_}"
+    } grep {
+        defined($headers{$_})
+    } keys(%headers);
+
+    return $headers;
+} # qbox_curl_gen_headers
 
 1;
 
