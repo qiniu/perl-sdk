@@ -145,11 +145,13 @@ sub qbox_curl_gen_headers {
         }
     } # foreach
 
-    my $headers = map {
-        "$_: $headers{$_}"
-    } grep {
-        defined($headers{$_})
-    } keys(%headers);
+    my $headers = [
+        map {
+            "$_: $headers{$_}"
+        } grep {
+            defined($headers{$_})
+        } keys(%headers)
+    ];
 
     return $headers;
 } # qbox_curl_gen_headers
