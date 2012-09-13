@@ -138,12 +138,12 @@ sub qbox_curl_make_multipart_form {
 } # qbox_curl_make_multipart_form
 
 sub qbox_curl_gen_headers {
-    my $origin = shift;
-    my $custom = shift;
-
     my %headers = ();
-    qbox_hash_merge(\%headers, $origin, 'FROM');
-    qbox_hash_merge(\%headers, $custom, 'FROM');
+    foreach my $headers (@_) {
+        if (ref($headers) eq 'HASH') {
+            qbox_hash_merge(\%headers, $headers, 'FROM');
+        }
+    } # foreach
 
     my $headers = map {
         "$_: $headers{$_}"
