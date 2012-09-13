@@ -79,7 +79,7 @@ sub qbox_rs_put_auth_ex {
 } # qbox_rs_put_auth_ex
 
 sub qbox_rs_resumable_put {
-    return &resumale_put;
+    return &resumable_put;
 } # qbox_rs_resumable_put
 
 sub qbox_rs_stat {
@@ -229,7 +229,7 @@ sub put_auth_ex {
     return $self->{client}->call($url, $opts);
 } # put_auth_ex
 
-sub resumale_put {
+sub resumable_put {
     my $self = shift;
     my ($prog, $blk_notify, $chk_notify, $notify_params,
         $entry, $mime_type, $reader_at, $fsize,
@@ -281,7 +281,7 @@ sub resumale_put {
     return $ret, $err, $prog if ($err->{code} != 200);
 
     return $ret, $err, undef;
-} # resumale_put
+} # resumable_put
 
 sub stat {
     my $self = shift;

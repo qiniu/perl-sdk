@@ -326,6 +326,7 @@ sub mkfile {
 
     $opts ||= {};
     $opts->{api} = API_MKFILE;
+    $opts->{headers}{'Content-Type'} = 'text/plain';
     my $url = join('/', @args);
     my $ctx_buff = join ",", map { $_->{ctx} } @{$prog->{progs}};
     my $ctx_size = length($ctx_buff);

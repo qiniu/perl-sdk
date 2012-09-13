@@ -588,7 +588,7 @@ my %cmds = (
         my $prog = $up_read_progress->($notify_params);
 
         my $rs = QBox::RS->new($client, $hosts);
-        ($ret, $err, $prog) = $rs->resumale_put(
+        ($ret, $err, $prog) = $rs->resumable_put(
             $prog,
             defined($notify_blk) ? $up_blk_notify : $up_blk_abort,
             defined($notify_chk) ? $up_chk_notify : $up_chk_abort,
