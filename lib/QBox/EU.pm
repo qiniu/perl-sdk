@@ -14,6 +14,7 @@ use strict;
 use warnings;
 
 use QBox::Config;
+use QBox::Misc;
 
 use constant API_WMSET       => 'eu.wmset';
 use constant API_WMGET       => 'eu.wmget';
