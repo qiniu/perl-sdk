@@ -28,12 +28,26 @@ our @EXPORT = qw(
     qbox_curl_call_core
     qbox_curl_make_form 
     qbox_curl_make_multipart_form 
-    qbox_curl_gen_headers
+    qbox_curl_merge_headers
 );
+
+my $qbox_curl_gen_headers = sub {
+    my $headers = shift;
+    
+    my $curl_headers = [ 
+        map {
+            "$_: $headers->{$_}"
+        } grep {
+            defined($headers->{$_})
+        } keys(%$headers)
+    ];
+
+    return $curl_headers;
+};
 
 sub qbox_curl_call_pre {
     my $url     = shift;
-    my $headers = shift || [];
+    my $headers = shift || {};
     my $opts    = shift || {};
 
     my $curl = Net::Curl::Easy->new();
@@ -41,6 +55,8 @@ sub qbox_curl_call_pre {
     my $api = $opts->{api} || 'unknown_api';
     QBox::Stub::call_stub("${api}.url", \$url);
     QBox::Stub::call_stub("${api}.headers", \$headers);
+
+    $headers = $qbox_curl_gen_headers->($headers);
 
     $curl->setopt(CURLOPT_CUSTOMREQUEST,  'POST');
     $curl->setopt(CURLOPT_SSL_VERIFYPEER, 0);
@@ -137,24 +153,15 @@ sub qbox_curl_make_multipart_form {
     return $form;
 } # qbox_curl_make_multipart_form
 
-sub qbox_curl_gen_headers {
+sub qbox_curl_merge_headers {
     my %headers = ();
     foreach my $headers (@_) {
         if (ref($headers) eq 'HASH') {
             qbox_hash_merge(\%headers, $headers, 'FROM');
         }
     } # foreach
-
-    my $headers = [
-        map {
-            "$_: $headers{$_}"
-        } grep {
-            defined($headers{$_})
-        } keys(%headers)
-    ];
-
-    return $headers;
-} # qbox_curl_gen_headers
+    return \%headers;
+} # qbox_curl_merge_headers
 
 1;
 

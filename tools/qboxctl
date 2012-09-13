@@ -208,22 +208,6 @@ sub get_json {
     return $json;
 } # get_json
 
-sub mod_http_headers {
-    my $src = shift;
-    my $dst = shift;
-
-    if (ref($src->{del}) eq 'ARRAY') {
-        foreach my $header (@{$src->{del}}) {
-            my $re = "^${header}\\s*:";
-            $$dst = [grep { $_ !~ $re } @{$$dst}];
-        } # foreach
-    }
-
-    if (ref($src->{add}) eq 'ARRAY') {
-        push @{$$dst}, @{$src->{add}};
-    }
-} # mod_http_headers
-
 sub read_conf {
     my $fls = shift;
 
@@ -764,11 +748,13 @@ QBox::Stub::set_stub(sub {
 
     # may modify http headers
     if ($title =~ m/^(.+)[.]headers$/) {
-        if (ref($rc->{headers}{$1}) eq 'HASH') {
-            mod_http_headers($rc->{headers}{$1}, $context);
-        }
+        my $api= $1;
+
         if (ref($rc->{headers}{all}) eq 'HASH') {
-            mod_http_headers($rc->{headers}{all}, $context);
+            qbox_hash_merge($$context, $rc->{headers}{all}, 'FROM');
+        }
+        if (ref($rc->{headers}{$api}) eq 'HASH') {
+            qbox_hash_merge($$context, $rc->{headers}{$api}, 'FROM');
         }
     }
 
