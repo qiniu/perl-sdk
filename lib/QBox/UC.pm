@@ -14,6 +14,7 @@ use strict;
 use warnings;
 
 use QBox::Config;
+use QBox::Misc;
 
 use constant API_APP_INFO      => 'uc.app-info';
 use constant API_NEW_ACCESS    => 'uc.new-access';
