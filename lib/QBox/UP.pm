@@ -273,7 +273,7 @@ sub resumable_blockput {
     return $ret, $err;
 } # resumable_blockput
 
-sub mkfile {
+sub mkfile_by_sha1 {
     my $self = shift;
     my ($cmd, $entry, $mime_type, $fsize, $params, $callback_params, $checksums, $blk_count, $opts) =
         qbox_extract_args([qw{cmd entry mime_type fsize params callback_params checksums blk_count}], @_);
@@ -300,6 +300,36 @@ sub mkfile {
     my $url = join('/', @args);
     my ($cksum_buff, $cksum_size) = reform_checksums($checksums);
     return $self->{client}->call_with_buffer($url, $cksum_buff, $cksum_size, $opts);
+} # mkfile_by_sha1
+
+sub mkfile {
+    my $self = shift;
+    my ($cmd, $entry, $mime_type, $fsize, $params, $callback_params, $prog, $opts) =
+        qbox_extract_args([qw{cmd entry mime_type fsize params callback_params prog}], @_);
+
+    my @args = (
+        $self->{hosts}{up_host},
+        $cmd    => qbox_base64_encode_urlsafe("$entry"),
+        'fsize' => "$fsize",
+    );
+
+    if (defined($params) and "$params" ne q{}) {
+        push @args, "$params";
+    }
+
+    $mime_type = defined($mime_type) ? "$mime_type" : q{application/octet-stream};
+    push @args, 'mimeType', qbox_base64_encode_urlsafe($mime_type);
+
+    if (defined($callback_params) and "$callback_params" ne q{}) {
+        push @args, 'params', qbox_base64_encode_urlsafe("$callback_params");
+    }
+
+    $opts ||= {};
+    $opts->{api} = API_MKFILE;
+    my $url = join('/', @args);
+    my $ctx_buff = join ",", map { $_->{ctx} } @{$prog->{progs}};
+    my $ctx_size = length($ctx_buff);
+    return $self->{client}->call_with_buffer($url, $ctx_buff, $ctx_size, $opts);
 } # mkfile
 
 sub put {

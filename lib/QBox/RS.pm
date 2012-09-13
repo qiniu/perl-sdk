@@ -275,8 +275,7 @@ sub resumale_put {
         $fsize,
         $new_params,
         $callback_params,
-        $prog->{checksums},
-        $prog->{blk_count},
+        $prog,
         $opts
     );
     return $ret, $err, $prog if ($err->{code} != 200);
