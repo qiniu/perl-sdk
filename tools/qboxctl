@@ -1,77 +1,5 @@
 #!/usr/bin/env perl
 
-package QBox::Engine;
-
-use strict;
-use warnings;
-
-sub new {
-    my $class = shift || __PACKAGE__;
-    my $self  = {};
-    return bless $self, $class;
-} # new
-
-my %attrs = (
-    'auth'          => '',
-    'access_key'    => 'auth',
-    'secret_key'    => 'auth',
-    'client_id'     => 'auth',
-    'client_secret' => 'auth',
-    'username'      => 'auth',
-    'password'      => 'auth',
-    'policy'        => 'auth',
-
-    'hosts'         => '',
-    'ac_host'       => 'hosts',
-    'io_host'       => 'hosts',
-    'up_host'       => 'hosts',
-    'rs_host'       => 'hosts',
-    'uc_host'       => 'hosts',
-    'eu_host'       => 'hosts',
-);
-
-our $AUTOLOAD;
-sub AUTOLOAD {
-    my $nm = $AUTOLOAD;
-    $nm =~ s/^.+://;
-
-    return if (not exists($attrs{$nm}));
-
-    my $method = undef;
-    my $sub = $attrs{$nm};
-    if ($sub eq q{}) {
-        $method = sub {
-            my ($self, $new) = @_;
-            my $old = $self->{$nm};
-            if (defined($new)) {
-                $self->{$nm} = $new;
-            }
-            return $old;
-        };
-    }
-    elsif ($sub ne q{}) {
-        $method = sub {
-            my ($self, $new) = @_;
-            $self->{$sub} ||= {};
-            my $old = $self->{$sub}{$nm};
-            if (defined($new)) {
-                $self->{$sub}{$nm} = $new;
-            }
-            return $old;
-        };
-    }
-
-    if (defined($method)) {
-        no strict;
-        *$QBox::Engine::{$nm}{CODE} = $method;
-        use strict;
-
-        return &$method;
-    }
-} # AUTOLOAD
-
-package main;
-
 use strict;
 use warnings;
 
@@ -462,91 +390,7 @@ my $eu_gen_settings = sub {
     return $settings;
 };
 
-my %cmd_alias = (
-    'get'   => 'rs.get',
-    'stat'  => 'rs.stat',
-    'pub'   => 'rs.publish',
-    'unpub' => 'rs.unpublish',
-    'puta'  => 'rs.put-auth',
-    'putaf' => 'rs.put-auth-file',
-    'putf'  => 'rs.put-file',
-    'rput'  => 'rs.resumable-put',
-    'del'   => 'rs.delete',
-    'drop'  => 'rs.drop',
-    'query' => 'up.query',
-    'wmget' => 'eu.wmget',
-    'wmset' => 'eu.wmset',
-    'wmmod' => 'eu.wmmod',
-    'appi'  => 'uc.app-info',
-    'nacs'  => 'uc.new-access',
-    'dacs'  => 'uc.delete-access',
-);
-
 my %cmds = (
-    'rs.get' => sub { # command
-        my ($client, $params, $hosts) = @_;
-
-        my $rs_params = $rs_get_params->($params);
-        my $rs = QBox::RS->new($client, $hosts);
-        return $rs->get(
-            $rs_params->{bucket},
-            $rs_params->{key},
-            $rs_params->{attr},
-            $rs_params->{base},
-        );
-    },
-    'rs.stat' => sub { # command
-        my ($client, $params, $hosts) = @_;
-
-        my $rs_params = $rs_get_params->($params);
-        my $rs = QBox::RS->new($client, $hosts);
-        return $rs->stat($rs_params->{bucket}, $rs_params->{key});
-    },
-    'rs.publish' => sub { # command
-        my ($client, $params, $hosts) = @_;
-
-        my $rs_params = $rs_get_params->($params);
-        my $rs = QBox::RS->new($client, $hosts);
-        return $rs->publish($rs_params->{bucket}, $rs_params->{domain});
-    },
-    'rs.unpublish' => sub { # command
-        my ($client, $params, $hosts) = @_;
-
-        my $rs_params = $rs_get_params->($params);
-        my $rs = QBox::RS->new($client, $hosts);
-        return $rs->unpublish($rs_params->{domain});
-    },
-    'rs.put-auth' => sub { # command
-        my ($client, $params, $hosts) = @_;
-
-        my $expires_in   = pickup_param($params->{expires_in}, 30);
-
-        my $rs = QBox::RS->new($client, $hosts);
-        return $rs->put_auth($expires_in);
-    },
-    'rs.put-auth-ex' => sub { # command
-        my ($client, $params, $hosts) = @_;
-
-        my $expires_in   = pickup_param($params->{expires_in}, 30);
-        my $callback_url = pickup_param($params->{callback_url});
-
-        my $rs = QBox::RS->new($client, $hosts);
-        return $rs->put_auth_ex($expires_in, $callback_url);
-    },
-    'rs.put-file' => sub { # command
-        my ($client, $params, $hosts) = @_;
-
-        my $rs_params = $rs_get_params->($params);
-
-        my $rs = QBox::RS->new($client, $hosts);
-        return $rs->put_file(
-            $rs_params->{bucket},
-            $rs_params->{key},
-            $rs_params->{mime_type},
-            $rs_params->{src_file},
-            $rs_params->{meta},
-        );
-    },
     'rs.resumable-put' => sub { # command
         my ($client, $params, $hosts) = @_;
 
@@ -594,72 +438,6 @@ my %cmds = (
         }
 
         return $ret, $err;
-    },
-    'rs.delete' => sub { # command
-        my ($client, $params, $hosts) = @_;
-
-        my $rs_params = $rs_get_params->($params);
-        my $rs = QBox::RS->new($client, $hosts);
-        return $rs->delete($rs_params->{bucket}, $rs_params->{key});
-    },
-    'rs.drop' => sub { # command
-        my ($client, $params, $hosts) = @_;
-
-        my $rs_params = $rs_get_params->($params);
-        my $rs = QBox::RS->new($client, $hosts);
-        return $rs->drop($rs_params->{bucket});
-    },
-    'up.query' => sub { # command
-        my ($client, $params, $hosts) = @_;
-
-        my $prog_fl = pickup_param($params->{prog_fl});
-        my $prog    = $up_read_progress->({ prog_fl => $prog_fl });
-
-        if (not defined($prog)) {
-            return undef, { code => 299, message => 'No correct progress infomation.' };
-        }
-
-        my $up = QBox::UP->new($client, $hosts);
-        return $up->query($prog->{checksums});
-    },
-    'eu.wmget' => sub { # command
-        my ($client, $params, $hosts) = @_;
-
-        my $customer = pickup_param($params->{customer});
-        my $eu = QBox::EU->new($client, $hosts);
-        return $eu->wmget($customer);
-    },
-    'eu.wmset' => sub { # command
-        my ($client, $params, $hosts) = @_;
-
-        my $settings = $eu_gen_settings->($params);
-        my $eu = QBox::EU->new($client, $hosts);
-        return $eu->wmset($settings);
-    },
-    'uc.app-info' => sub { # command
-        my ($client, $params, $hosts) = @_;
-
-        my $app = pickup_param($params->{app});
-
-        my $uc = QBox::UC->new($client, $hosts);
-        return $uc->app_info($app);
-    },
-    'uc.new-access' => sub { # command
-        my ($client, $params, $hosts) = @_;
-
-        my $app = pickup_param($params->{app});
-
-        my $uc = QBox::UC->new($client, $hosts);
-        return $uc->new_access($app);
-    },
-    'uc.delete-access' => sub { # command
-        my ($client, $params, $hosts) = @_;
-
-        my $app     = pickup_param($params->{app});
-        my $acs_key = pickup_param($params->{acs_key});
-
-        my $uc = QBox::UC->new($client, $hosts);
-        return $uc->delete_access($app, $acs_key);
     },
 );
 
@@ -712,6 +490,26 @@ my %ext_cmds = (
         $curl->setopt(CURLOPT_HTTPPOST, $form);
         return qbox_curl_call_core($curl);
     },
+);
+
+my %cmd_alias = (
+    'get'   => 'rs.get',
+    'stat'  => 'rs.stat',
+    'pub'   => 'rs.publish',
+    'unpub' => 'rs.unpublish',
+    'puta'  => 'rs.put-auth',
+    'putaf' => 'rs.put-auth-file',
+    'putf'  => 'rs.put-file',
+    'rput'  => 'rs.resumable-put',
+    'del'   => 'rs.delete',
+    'drop'  => 'rs.drop',
+    'query' => 'up.query',
+    'wmget' => 'eu.wmget',
+    'wmset' => 'eu.wmset',
+    'wmmod' => 'eu.wmmod',
+    'appi'  => 'uc.app-info',
+    'nacs'  => 'uc.new-access',
+    'dacs'  => 'uc.delete-access',
 );
 
 my ($args, $opts) = get_opts(\@ARGV);
