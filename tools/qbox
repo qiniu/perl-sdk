@@ -1,0 +1,367 @@
+#!/usr/bin/env perl
+
+use strict;
+use warnings;
+
+use English;
+use File::Basename;
+
+use JSON;                            # external library
+
+use QBox::Engine;
+use QBox::Stub;
+use QBox::Misc;
+
+### up callbacks
+my $up_read_progress_as_plain_text = sub {
+    my $fh = shift;
+
+    my $prog = {};
+    my $line = undef;
+
+    $line = <$fh>;
+    if ($line !~ m/^block_count=(\d+)\n/) {
+        die "Invalid progress file: No block count.";
+    }
+    $prog->{blk_count} = $1;
+
+    $prog->{checksums} = [];
+    for (my $i = 0; $i < $prog->{blk_count}; ++$i) {
+        $line = <$fh>;
+        if ($line !~ m/^checksum=(.*)\n/) {
+            die "Invalid progress file: Invalid checksum.";
+        }
+
+        push @{$prog->{checksums}}, { value => $1 };
+    } # for
+
+    $prog->{progs} = [];
+    for (my $i = 0; $i < $prog->{blk_count}; ++$i) {
+        my $pg = {};
+
+        $line = <$fh>;
+        if ($line !~ m/^offset=(\d+)\n/) {
+            die "Invalid progress file: Invalid offset.";
+        }
+        $pg->{offset} = $1;
+
+        $line = <$fh>;
+        if ($line !~ m/^rest_size=(\d+)\n/) {
+            die "Invalid progress file: Invalid rest size.";
+        }
+        $pg->{rest_size} = $1;
+
+        $line = <$fh>;
+        if ($line !~ m/^ctx=(.*)\n/) {
+            die "Invalid progress file: Invalid context.";
+        }
+        $pg->{ctx} = $1;
+
+        push @{$prog->{progs}}, $pg;
+    } # for
+
+    return $prog;
+};
+
+my $up_read_progress = sub {
+    my $params = shift;
+    
+    my $prog_fl = $params->{prog_fl};
+    return undef if (not defined($prog_fl) or $prog_fl eq q{});
+    return undef if (not -r $prog_fl);
+
+    open(my $fh, '<', $prog_fl) or die "$OS_ERROR";
+
+    my $prog = undef;
+    if ($prog_fl =~ m/json$/i) {
+        local $/ = undef;
+        my $text = <$fh>;
+        $prog = from_json($text);
+    }
+    else {
+        $prog = $up_read_progress_as_plain_text->($fh);
+    }
+
+    close($fh);
+    return $prog;
+};
+
+my $up_up_write_progress_as_plain_text = sub {
+    my $fh   = shift;
+    my $prog = shift;
+
+    printf {$fh} "block_count=%d\n", $prog->{blk_count};
+
+    foreach my $cksum (@{$prog->{checksums}}) {
+        printf {$fh} "checksum=%s\n", ($cksum->{value} || q{});
+    } # foreach
+
+    foreach my $pg (@{$prog->{progs}}) {
+        printf {$fh} "offset=%d\n", $pg->{offset};
+        printf {$fh} "rest_size=%d\n", $pg->{rest_size};
+        printf {$fh} "ctx=%s\n", ($pg->{ctx} || q{});
+    } # foreach
+};
+
+my $up_write_progress = sub {
+    my $params = shift;
+    my $prog   = shift;
+
+    my $prog_fl = $params->{prog_fl};
+    return if (not defined($prog_fl) or $prog_fl eq q{});
+
+    open(my $fh, '>', $prog_fl) or die "$OS_ERROR";
+
+    if ($prog_fl =~ m/json$/i) {
+        printf {$fh} "%s", to_json($prog, { pretty => 1 });
+    }
+    else {
+        $up_up_write_progress_as_plain_text->($fh, $prog);
+    }
+
+    close($fh);
+};
+
+my $up_blk_abort = sub {
+    my $params    = shift;
+    my $blk_index = shift;
+    my $checksum  = shift;
+
+    my $stop_idx = $params->{stop_idx};
+    if (defined($stop_idx) and $blk_index == $stop_idx) {
+        print {$params->{out_fh}} "Abort uploading block(#${stop_idx}).\n";
+        return 0;
+    }
+    return 1;
+};
+
+my $up_blk_notify = sub {
+    my $params    = shift;
+    my $blk_index = shift;
+    my $checksum  = shift;
+
+    print {$params->{out_fh}} "blk_index=${blk_index}, checksum=[$checksum->{value}]\n";
+    $up_blk_abort->($params, $blk_index, $checksum);
+};
+
+my $up_chk_abort = sub {
+    my $params    = shift;
+    my $blk_index = shift;
+    my $prog      = shift;
+
+    my $stop_idx = $params->{stop_idx};
+    if (defined($stop_idx) and $blk_index == $stop_idx) {
+        my $stop_size = $params->{stop_size};
+        if (defined($stop_size) and $prog->{offset} >= $stop_size) {
+            print {$params->{out_fh}} "Abort uploading chunk(#$prog->{stop_idx}, \@$prog->{offset}).\n";
+            return 0;
+        }
+    }
+    return 1;
+};
+
+my $up_chk_notify = sub {
+    my $params    = shift;
+    my $blk_index = shift;
+    my $prog      = shift;
+
+    print {$params->{out_fh}} "blk_index=${blk_index}, uploaded=$prog->{offset}, rest=$prog->{rest_size}, ctx=[$prog->{ctx}]\n";
+    $up_chk_abort->($params, $blk_index, $prog);
+};
+
+### helper routines
+my $conf    = undef;
+my $debug   = undef;
+my $verbose = undef;
+my $pretty  = undef;
+
+sub fmt_json {
+    my $obj = shift;
+    if ($pretty) {
+        my $json = to_json($obj, { pretty => 1});
+        $json =~ s/\n$//;
+        return $json;
+    }
+    return to_json($obj);
+} # fmt_json
+
+sub get_opts {
+    my $args  = shift;
+    my $opts  = {};
+    my $fixed = [];
+
+    for (my $i = 0; $i < scalar(@$args); ++$i) {
+        my $arg = $args->[$i];
+
+        if ($arg =~ m/^(?:--conf|-f)/) {
+            $opts->{conf} ||= [];
+            push @{$opts->{conf}}, $args->[$i + 1];
+            ++$i;
+            next;
+        }
+
+        if ($arg =~ m/^(?:--debug|-d)/) {
+            $debug = 1;
+            next;
+        }
+
+        if ($arg =~ m/^(?:--verbose|-v)/) {
+            $verbose = 1;
+            next;
+        }
+
+        if ($arg =~ m/^(?:--pretty|-P)/) {
+            $pretty = 1;
+            next;
+        }
+
+        if ($arg =~ m/^-/) {
+            print STDERR "Unknown option '$arg'.\n";
+            exit(1);
+        }
+
+        push @$fixed, $arg;
+    } # for
+
+    return $fixed, $opts;
+} # get_opts
+
+sub parse_params {
+    my $args = shift;
+    return { map { split('=', $_, 2) } @$args };
+} # parse_params
+
+sub get_json {
+    my $text = shift;
+    my $json = undef;
+    
+    if (-r $text) {
+        open(my $fh, '<', $text) or die "$OS_ERROR";
+        local $INPUT_RECORD_SEPARATOR = undef;
+        $text = <$fh>;
+        close($fh);
+    }
+
+    eval {
+        $json = from_json($text);
+    };
+
+    if ($EVAL_ERROR) {
+        die "${EVAL_ERROR}(text=${text})";
+    }
+
+    return $json;
+} # get_json
+
+sub read_conf {
+    my $fls = shift;
+
+    my $conf = {};
+    foreach my $fl (@$fls) {
+        next if (not defined($fl) or $fl eq q{});
+
+        open(my $fh, '<', $fl) or die "$!";
+        local $/ = undef;
+        my $text = <$fh>;
+        close($fh);
+
+        my $new_conf = undef;
+        eval {
+            $new_conf = from_json($text);
+        };
+        if ($EVAL_ERROR) {
+            die "$EVAL_ERROR(fl=${fl})";
+        }
+
+        qbox_hash_merge($conf, $new_conf, 'FROM');
+    } # foreach
+
+    return $conf;
+} # read_conf
+
+### main
+my ($args, $opts) = get_opts(\@ARGV);
+
+my $cmd = lc(shift(@$args));
+if (not defined($cmd) or $cmd eq q{}) {
+    my $prog_nm = basename($0);
+    print "Usage: ${prog_nm} [OPTION] CMD [PARAM=ARG [PARAM=ARG [...]]]\n";
+    exit(1);
+}
+
+my $rc = {
+    auth    => {},
+    params  => {},
+    headers => {},
+};
+
+$conf = read_conf($opts->{conf});
+qbox_hash_merge($rc, $conf, 'FROM');
+
+my $params = parse_params($args);
+qbox_hash_merge($rc->{params}, $params, 'FROM');
+
+QBox::Stub::set_stub(sub {
+    my ($data, $title, $context) = @_;
+
+    # may modify http headers
+    if ($title =~ m/^(.+)[.]headers$/) {
+        my $svc = $1;
+        if (ref($rc->{headers}{all}) eq 'HASH') {
+            qbox_hash_merge($$context, $rc->{headers}{all}, 'FROM');
+        }
+        if (ref($rc->{headers}{$svc}) eq 'HASH') {
+            qbox_hash_merge($$context, $rc->{headers}{$svc}, 'FROM');
+        }
+    }
+
+    # may echo context
+    if ($debug) {
+        my $type = ref($$context);
+        if ($type eq 'HASH' or $type eq 'ARRAY') {
+            printf STDERR "${title}=%s\n", fmt_json($$context);
+        }
+        else {
+            print STDERR "${title}=[$${context}]\n";
+        }
+    }
+});
+
+eval {
+    my $engine = QBox::Engine->new();
+
+    $engine->set_auth($rc->{auth});
+    $engine->set_host($rc->{hosts} || {});
+    $engine->auto_auth();
+
+    if ($cmd eq 'rput' or $cmd eq 'resumable_put') {
+        my $notify = {
+            'stop_blk'   => $params->{stop_blk},
+            'stop_chk'   => $params->{stop_chk},
+            'prog_fl'    => $params->{prog_fl},
+            'notify_blk' => (defined($params->{stop_blk})) ? $up_blk_notify : $up_blk_abort,
+            'notify_chk' => (defined($params->{stop_chk})) ? $up_chk_notify : $up_chk_abort,
+            'out_fh'     => \*STDERR,
+        };
+
+        if (defined($notify->{stop_chk})) {
+            $notify->{stop_blk} ||= 0;
+        }
+
+        $params->{notify} = $notify;
+    }
+
+    my ($ret, $err) = $engine->$cmd($params, $rc->{params});
+    if ($verbose or ($err->{code} != 200)) {
+        printf STDERR "%d %s\n", $err->{code}, $err->{message};
+    }
+
+    $ret ||= {};
+    printf "%s\n", fmt_json($ret);
+};
+
+if ($EVAL_ERROR) {
+    print "$EVAL_ERROR\n";
+    #print "Unknown command '$cmd'.\n";
+    exit(1);
+}

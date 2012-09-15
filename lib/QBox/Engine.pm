@@ -41,13 +41,96 @@ my $pickup_param = sub {
     return undef;
 };
 
-my $output_message = sub {
+my $get_svc = sub {
     my $self = shift;
-    if ($self->{out_fh}) {
-        foreach my $msg (@_) {
-            print {$self->{out_fh}} $msg, "\n";
-        } # foreach
+    my $svc  = shift;
+    if (not exists($self->{svc}{$svc})) {
+        my $new_svc = lc("new_${svc}");
+        $self->{svc}{$svc} = $self->$new_svc();
     }
+    return $self->{svc}{$svc};
+};
+
+### rs methods
+my $rs_get_params = sub {
+    my $params = shift;
+    my $rs_params = {
+        src             => $pickup_param->($params->{src}, q{}),
+        bucket          => $pickup_param->($params->{bkt}),
+        key             => $pickup_param->($params->{key}, basename($params->{src})),
+        mime            => $pickup_param->($params->{mime}, 'application/octet-stream'),
+        meta            => $pickup_param->($params->{meta}),
+        params          => $pickup_param->($params->{params}),
+        callback_params => $pickup_param->($params->{callback_params}),
+
+        attr            => $pickup_param->($params->{attr}),
+        base            => $pickup_param->($params->{base}),
+        domain          => $pickup_param->($params->{domain}),
+    };
+    return $rs_params;
+};
+
+### up methods
+sub resumable_put {
+    my $self   = shift;
+    my $params = shift;
+    my $notify = $params->{notify} || {};
+
+    my $rs_params = $rs_get_params->($params);
+
+    my $fsize     = (main::stat($rs_params->{src}))[7];
+    my $reader_at = QBox::ReaderAt::File->new($rs_params->{src});
+
+    $notify->{engine} = $self;
+
+    my ($ret, $err, $prog) = ();
+    if (defined($notify->{read_prog})) {
+        $prog = $notify->{read_prog}->($notify);
+    }
+
+    $get_svc->($self, 'rs');
+    ($ret, $err, $prog) = $self->{svc}{rs}->resumale_put(
+        $prog,
+        $notify->{blk_notify},
+        $notify->{chk_notify},
+        $notify,
+        qbox_make_entry($rs_params->{bucket}, $rs_params->{key}),
+        $rs_params->{mime},
+        $reader_at,
+        $fsize,
+        $rs_params->{meta},
+        $rs_params->{params},
+        $rs_params->{callback_params},
+    );
+
+    if ($err->{code} != 200) {
+        if (defined($notify->{write_prog})) {
+            $notify->{write_prog}->($notify, $prog);
+        }
+    }
+    else {
+        if (defined($notify->{end_prog})) {
+            $notify->{end_prog}->($notify, $prog);
+        }
+    }
+
+    return $ret, $err;
+} # resumable_put
+
+### eu methods
+my $eu_gen_settings = sub {
+    my $params   = shift;
+    my $settings = shift || {};
+
+    my $wms   = $pickup_param->($params->{wms});
+    my $names = QBox::EU::wm_setting_names();
+
+    if (defined($wms) and $wms ne q{}) {
+        qbox_hash_merge($settings, get_json($wms), 'FROM', $names);
+    }
+    qbox_hash_merge($settings, $params, 'FROM', $names);
+
+    return $settings;
 };
 
 my $exec = undef;
@@ -97,16 +180,6 @@ $methods{appi}  = $methods{app_info};
 $methods{nacs}  = $methods{new_access};
 $methods{dacs}  = $methods{delete_access};
 
-$get_svc = sub {
-    my $self = shift;
-    my $svc  = shift;
-    if (not exists($self->{svc}{$svc})) {
-        my $new_svc = lc("new_${svc}");
-        $self->{svc}{$svc} = $self->$new_svc->();
-    }
-    return $self->{svc}{$svc};
-};
-
 $exec = sub {
     my $self = shift;
     my $svc  = shift;
@@ -115,14 +188,12 @@ $exec = sub {
     my $opts = shift;
 
     $get_svc->($self, $svc);
-
-    my $method = $methods{$cmd};
-    if (not defined($method)) {
-        return undef, { code => 499, message => "Unknown command '$cmd'" };
+    if ($svc eq 'rs') {
+        $args = $rs_get_params->($args);
     }
 
     my $svc_host = $self->{svc}{$svc};
-    return $svc_host->$method->($args, $opts);
+    return $svc_host->$cmd($args, $opts);
 };
 
 our $AUTOLOAD;
@@ -134,7 +205,10 @@ sub AUTOLOAD {
 
     my $method = undef;
     my $sub = $methods{$nm};
-    if ($sub eq q{}) {
+    if (ref($sub) eq 'CODE') {
+        $method = $sub;
+    }
+    elsif ($sub eq q{}) {
         $method = sub {
             my ($self, $new) = @_;
             my $old = $self->{$nm};
@@ -158,268 +232,13 @@ sub AUTOLOAD {
 
     if (defined($method)) {
         no strict;
-        *$QBox::Engine::{$nm}{CODE} = $method;
+        #*$QBox::Engine::{$nm}{CODE} = $method;
+        *$AUTOLOAD = $method;
         use strict;
 
-        return &$method;
+        goto &$AUTOLOAD;
     }
 } # AUTOLOAD
-
-### rs methods
-my $rs_get_params = sub {
-    my $params = shift;
-    my $rs_params = {
-        src             => $pickup_param->($params->{src}, q{});
-        bucket          => $pickup_param->($params->{bkt});
-        key             => $pickup_param->($params->{key}, basename($params->{src}));
-        mime            => $pickup_param->($params->{mime}, 'application/octet-stream');
-        meta            => $pickup_param->($params->{meta});
-        params          => $pickup_param->($params->{params});
-        callback_params => $pickup_param->($params->{callback_params});
-
-        attr            => $pickup_param->($params->{attr});
-        base            => $pickup_param->($params->{base});
-        domain          => $pickup_param->($params->{domain});
-    };
-    return $rs_params;
-};
-
-### up methods
-my $up_read_progress_as_plain_text = sub {
-    my $fh = shift;
-
-    my $prog = {};
-    my $line = undef;
-
-    $line = <$fh>;
-    if ($line !~ m/^block_count=(\d+)\n/) {
-        die "Invalid progress file: No block count.";
-    }
-    $prog->{blk_count} = $1;
-
-    $prog->{checksums} = [];
-    for (my $i = 0; $i < $prog->{blk_count}; ++$i) {
-        $line = <$fh>;
-        if ($line !~ m/^checksum=(.*)\n/) {
-            die "Invalid progress file: Invalid checksum.";
-        }
-
-        push @{$prog->{checksums}}, { value => $1 };
-    } # for
-
-    $prog->{progs} = [];
-    for (my $i = 0; $i < $prog->{blk_count}; ++$i) {
-        my $pg = {};
-
-        $line = <$fh>;
-        if ($line !~ m/^offset=(\d+)\n/) {
-            die "Invalid progress file: Invalid offset.";
-        }
-        $pg->{offset} = $1;
-
-        $line = <$fh>;
-        if ($line !~ m/^rest_size=(\d+)\n/) {
-            die "Invalid progress file: Invalid rest size.";
-        }
-        $pg->{rest_size} = $1;
-
-        $line = <$fh>;
-        if ($line !~ m/^ctx=(.*)\n/) {
-            die "Invalid progress file: Invalid context.";
-        }
-        $pg->{ctx} = $1;
-
-        push @{$prog->{progs}}, $pg;
-    } # for
-
-    return $prog;
-};
-
-my $up_read_progress = sub {
-    my $params = shift;
-    
-    my $prog_fl = $params->{prog_fl};
-    return undef if (not defined($prog_fl) or $prog_fl eq q{});
-    return undef if (not -r $prog_fl);
-
-    open(my $fh, '<', $prog_fl) or die "$OS_ERROR";
-
-    my $prog = undef;
-    if ($prog_fl =~ m/json$/i) {
-        local $/ = undef;
-        my $text = <$fh>;
-        $prog = from_json($text);
-    }
-    else {
-        $prog = $up_read_progress_as_plain_text->($fh);
-    }
-
-    close($fh);
-    return $prog;
-};
-
-my $up_up_write_progress_as_plain_text = sub {
-    my $fh   = shift;
-    my $prog = shift;
-
-    printf {$fh} "block_count=%d\n", $prog->{blk_count};
-
-    foreach my $cksum (@{$prog->{checksums}}) {
-        printf {$fh} "checksum=%s\n", ($cksum->{value} || q{});
-    } # foreach
-
-    foreach my $pg (@{$prog->{progs}}) {
-        printf {$fh} "offset=%d\n", $pg->{offset};
-        printf {$fh} "rest_size=%d\n", $pg->{rest_size};
-        printf {$fh} "ctx=%s\n", ($pg->{ctx} || q{});
-    } # foreach
-};
-
-my $up_write_progress = sub {
-    my $params = shift;
-    my $prog   = shift;
-
-    my $prog_fl = $params->{prog_fl};
-    return if (not defined($prog_fl) or $prog_fl eq q{});
-
-    open(my $fh, '>', $prog_fl) or die "$OS_ERROR";
-
-    if ($prog_fl =~ m/json$/i) {
-        printf {$fh} "%s", to_json($prog, { pretty => 1 });
-    }
-    else {
-        $up_up_write_progress_as_plain_text->($fh, $prog);
-    }
-
-    close($fh);
-};
-
-my $up_blk_abort = sub {
-    my $params    = shift;
-    my $blk_index = shift;
-    my $checksum  = shift;
-
-    my $stop_idx = $params->{stop_idx};
-    if (defined($stop_idx) and $blk_index == $stop_idx) {
-        $output_message->(
-            $params->{engine},
-            "Abort uploading block(#${stop_idx})."
-        );
-        return 0;
-    }
-    return 1;
-};
-
-my $up_blk_notify = sub {
-    my $params    = shift;
-    my $blk_index = shift;
-    my $checksum  = shift;
-
-    $output_message->(
-        $params->{engine},
-        "blk_index=${blk_index}, checksum=[$checksum->{value}]"
-    );
-    $up_blk_abort->($params, $blk_index, $checksum);
-};
-
-my $up_chk_abort = sub {
-    my $params    = shift;
-    my $blk_index = shift;
-    my $prog      = shift;
-
-    my $stop_idx = $params->{stop_idx};
-    if (defined($stop_idx) and $blk_index == $stop_idx) {
-        my $stop_size = $params->{stop_size};
-        if (defined($stop_size) and $prog->{offset} >= $stop_size) {
-            $output_message->(
-                $params->{engine},
-                "Abort uploading chunk(#$prog->{stop_idx}, \@$prog->{offset})."
-            );
-            return 0;
-        }
-    }
-    return 1;
-};
-
-my $up_chk_notify = sub {
-    my $params    = shift;
-    my $blk_index = shift;
-    my $prog      = shift;
-
-    $output_message->(
-        $params->{engine},
-        "blk_index=${blk_index}, uploaded=$prog->{offset}, rest=$prog->{rest_size}, ctx=[$prog->{ctx}]"
-    );
-    $rp_chk_abort->($params, $blk_index, $prog);
-};
-
-sub resumable_put {
-    my $self          = shift;
-    my $params        = shift;
-    my $notify_params = shift || {};
-
-    my $rs_params = $rs_get_params->($params);
-
-    my $fsize     = (stat($rs_params->{src}))[7];
-    my $reader_at = QBox::ReaderAt::File->new($rs_params->{src});
-
-    my $notify_blk = $pickup_param->($params->{notify_blk});
-    my $notify_chk = $pickup_param->($params->{notify_chk});
-
-    $notify_params->{engine} = $self;
-    $notify_params->{stop_idx}  = $pickup_param->($params->{stop_idx});
-    $notify_params->{stop_size} = $pickup_param->($params->{stop_size});
-    $notify_params->{prog_fl}   = $pickup_param->($params->{prog_fl});
-
-    if (defined($notify_params->{stop_size})) {
-        $notify_params->{stop_idx} ||= 0;
-    }
-
-    my $ret  = undef;
-    my $err  = undef;
-    my $prog = $up_read_progress->($notify_params);
-
-    $get_svc->($self, 'rs');
-    ($ret, $err, $prog) = $self->{svc}{rs}->resumale_put(
-        $prog,
-        defined($notify_blk) ? $up_blk_notify : $up_blk_abort,
-        defined($notify_chk) ? $up_chk_notify : $up_chk_abort,
-        $notify_params,
-        qbox_make_entry($rs_params->{bucket}, $rs_params->{key}),
-        $rs_params->{mime},
-        $reader_at,
-        $fsize,
-        $rs_params->{meta},
-        $rs_params->{params},
-        $rs_params->{callback_params},
-    );
-
-    if ($err->{code} != 200) {
-        $up_write_progress->($notify_params, $prog);
-    }
-    elsif ($notify_params->{prog_fl} and -w $notify_params->{prog_fl}) {
-        unlink($notify_params->{prog_fl});
-    }
-
-    return $ret, $err;
-} # resumable_put
-
-### eu methods
-my $eu_gen_settings = sub {
-    my $params   = shift;
-    my $settings = shift || {};
-
-    my $wms   = $pickup_param->($params->{wms});
-    my $names = QBox::EU::wm_setting_names();
-
-    #qbox_hash_merge($settings, $conf, $names);
-    if (defined($wms) and $wms ne q{}) {
-        qbox_hash_merge($settings, get_json($wms), $names);
-    }
-    qbox_hash_merge($settings, $params, $names);
-
-    return $settings;
-};
 
 sub wmmod {
     my $self   = shift;
@@ -511,7 +330,7 @@ sub set_host {
     my $value = shift;
 
     if (ref($hosts) eq 'HASH') {
-        qbox_merge_hash($self->{hosts}, $hosts);
+        qbox_hash_merge($self->{hosts}, $hosts, 'TO');
     }
 } # set_host
 
@@ -534,7 +353,7 @@ sub set_auth {
     my $auth = shift;
 
     if (ref($auth) eq 'HASH') {
-        qbox_hash_merge($self->{auth}, $auth, keys(%{$self->{auth}}));
+        qbox_hash_merge($self->{auth}, $auth, 'TO');
     }
 } # set_host
 
@@ -596,7 +415,7 @@ sub auth_by_access_key {
 
     $acs_key ||= $pickup_param->($self->{auth}{access_key}, 'Put your ACCESS KEY here');
     $scr_key ||= $pickup_param->($self->{auth}{secret_key}, 'Put your SECRET KEY here');
-    $policy  ||= $pickup_param->($self->{auth}{policy}, 'Put your POLICY here');
+    $policy  ||= $self->{auth}{policy};
 
     if (not defined($acs_key) or not defined($scr_key)) {
         return undef, "No access key or secret key.";
@@ -627,13 +446,16 @@ sub auth_by_access_key {
     return 1, q{};
 } # auth_by_access_key
 
-sub set_output {
+sub auto_auth {
     my $self = shift;
-    my $new  = shift;
-    my $old  = $self->{out_fh};
-    $self->{out_fh} = $new;
-    return $old;
-} # set_output
+    my ($ret, $err) = ();
+
+    ($ret, $err) = $self->auth_by_password();
+    return if $ret;
+
+    ($ret, $err) = $self->auth_by_access_key();
+    return $ret, $err;
+} # auto_auth
 
 1;
 
