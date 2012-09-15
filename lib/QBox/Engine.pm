@@ -55,9 +55,9 @@ my $get_svc = sub {
 my $rs_get_params = sub {
     my $params = shift;
     my $rs_params = {
-        src             => $pickup_param->($params->{src}, q{}),
-        bucket          => $pickup_param->($params->{bkt}),
-        key             => $pickup_param->($params->{key}, basename($params->{src})),
+        file            => $pickup_param->($params->{src}, $params->{file}, q{}),
+        bucket          => $pickup_param->($params->{bkt}, $params->{bucket}),
+        key             => $pickup_param->($params->{key}),
         mime            => $pickup_param->($params->{mime}, 'application/octet-stream'),
         meta            => $pickup_param->($params->{meta}),
         params          => $pickup_param->($params->{params}),
@@ -78,8 +78,8 @@ sub resumable_put {
 
     my $rs_params = $rs_get_params->($params);
 
-    my $fsize     = (main::stat($rs_params->{src}))[7];
-    my $reader_at = QBox::ReaderAt::File->new($rs_params->{src});
+    my $fsize     = (stat($rs_params->{file}))[7];
+    my $reader_at = QBox::ReaderAt::File->new($rs_params->{file});
 
     $notify->{engine} = $self;
 
@@ -89,7 +89,7 @@ sub resumable_put {
     }
 
     $get_svc->($self, 'rs');
-    ($ret, $err, $prog) = $self->{svc}{rs}->resumale_put(
+    ($ret, $err, $prog) = $self->{svc}{rs}->resumable_put(
         $prog,
         $notify->{blk_notify},
         $notify->{chk_notify},
@@ -201,7 +201,12 @@ sub AUTOLOAD {
     my $nm = $AUTOLOAD;
     $nm =~ s/^.+://;
 
-    return if (not exists($methods{$nm}));
+    if (not exists($methods{$nm})) {
+        return undef, {
+            'code'    => 499,
+            'message' => "No such command.(cmd=${nm})",
+        };
+    }
 
     my $method = undef;
     my $sub = $methods{$nm};
@@ -273,7 +278,7 @@ sub put_auth_file {
     };
     
     my $file_body = {
-        file => $rs_params->{src},
+        file => $rs_params->{file},
     };
 
     my $form = qbox_curl_make_multipart_form($body, $file_body);
@@ -330,7 +335,7 @@ sub set_host {
     my $value = shift;
 
     if (ref($hosts) eq 'HASH') {
-        qbox_hash_merge($self->{hosts}, $hosts, 'TO');
+        qbox_hash_merge($self->{hosts}, $hosts, 'FROM');
     }
 } # set_host
 
