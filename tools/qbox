@@ -6,7 +6,7 @@ use warnings;
 use English;
 use File::Basename;
 
-use JSON;                            # external library
+use JSON; # external library
 
 use QBox::Engine;
 use QBox::Stub;
@@ -327,29 +327,32 @@ QBox::Stub::set_stub(sub {
     }
 });
 
+if ($cmd eq 'rput' or $cmd eq 'resumable_put') {
+    my $notify = {
+        'stop_blk'   => $params->{stop_blk},
+        'stop_chk'   => $params->{stop_chk},
+        'prog_fl'    => $params->{prog_fl},
+        'notify_blk' => (defined($params->{stop_blk})) ? $up_blk_notify : $up_blk_abort,
+        'notify_chk' => (defined($params->{stop_chk})) ? $up_chk_notify : $up_chk_abort,
+        'out_fh'     => \*STDERR,
+    };
+
+    if (defined($notify->{stop_chk})) {
+        $notify->{stop_blk} ||= 0;
+    }
+
+    $params->{notify} = $notify;
+}
+
+$params->{bucket} ||= 'Bucket';
+$params->{key}    ||= basename($params->{src} || '');
+
 eval {
     my $engine = QBox::Engine->new();
 
     $engine->set_auth($rc->{auth});
     $engine->set_host($rc->{hosts} || {});
     $engine->auto_auth();
-
-    if ($cmd eq 'rput' or $cmd eq 'resumable_put') {
-        my $notify = {
-            'stop_blk'   => $params->{stop_blk},
-            'stop_chk'   => $params->{stop_chk},
-            'prog_fl'    => $params->{prog_fl},
-            'notify_blk' => (defined($params->{stop_blk})) ? $up_blk_notify : $up_blk_abort,
-            'notify_chk' => (defined($params->{stop_chk})) ? $up_chk_notify : $up_chk_abort,
-            'out_fh'     => \*STDERR,
-        };
-
-        if (defined($notify->{stop_chk})) {
-            $notify->{stop_blk} ||= 0;
-        }
-
-        $params->{notify} = $notify;
-    }
 
     my ($ret, $err) = $engine->$cmd($params, $rc->{params});
     if ($verbose or ($err->{code} != 200)) {
@@ -362,6 +365,5 @@ eval {
 
 if ($EVAL_ERROR) {
     print "$EVAL_ERROR\n";
-    #print "Unknown command '$cmd'.\n";
     exit(1);
 }
