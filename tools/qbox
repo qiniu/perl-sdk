@@ -270,7 +270,7 @@ sub exec_cmd {
     }
 
     $args->{bucket} ||= 'Bucket';
-    $args->{key}    ||= basename($args->{src} || '');
+    $args->{key}    ||= (defined($args->{src}) ? basename($args->{src}) : undef;
 
     qbox_hash_merge($opts, $args, 'FROM', ['headers']);
     my ($ret, $err) = $engine->$cmd($args, $opts);
@@ -295,10 +295,9 @@ sub oneshot {
 } # oneshot
 
 my $brace_re = undef;
-$brace_re = qr/\{ (?: [^\{\}]* | (??{ $brace_re }) ) \}/x;
+$brace_re = qr/\{ (?: [^\{\}] | (??{ $brace_re }) )* \}/x;
 my $bracket_re = undef;
-$bracket_re = qr/\[ (?: [^\[\]]* | (??{ $bracket_re }) ) \]/x;
-my $json_re = qr/(?:$brace_re|$bracket_re)/;
+$bracket_re = qr/\[ (?: [^\[\]] | (??{ $bracket_re }) )* \]/x;
 
 sub parse_args {
     my $cmd_ln = shift;
@@ -326,11 +325,14 @@ sub parse_args {
         return $args, $remain;
     }
     
-    while ($remain =~ m/([^\s=]+=(?:$json_re|\S+))\s*/gc) {
+    while ($remain =~ m/([^\s=]+=(?:$brace_re|$bracket_re|\S+))\s*/gc) {
         push @$args, $1;
     } # while
 
-    return $args, substr($remain, pos($remain));
+    if (pos($remain) < length($remain)) {
+        return $args, substr($remain, pos($remain));
+    }
+    return $args, q{};
 } # parse_args
 
 sub exec_file {
