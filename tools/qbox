@@ -172,16 +172,10 @@ my $up_chk_notify = sub {
 ### helper routines
 my $conf    = undef;
 my $debug   = undef;
-my $verbose = undef;
+my $verbose = 0;
 my $pretty  = undef;
 my $batch   = undef;
 my $prompt  = undef;
-
-my $rc = {
-    auth    => {},
-    args    => {},
-    headers => {},
-};
 
 sub fmt_json {
     my $obj = shift;
@@ -219,7 +213,7 @@ sub get_opts {
         }
 
         if ($arg =~ m/^(?:--verbose|-v)/) {
-            $verbose = 1;
+            $verbose += 1;
             next;
         }
 
@@ -254,6 +248,9 @@ sub exec_cmd {
 
     my $cmd = shift(@$args);
     $args = { map { split('=', $_, 2) } @$args };
+    foreach my $value (values(%$args)) {
+        eval { $value = from_json($value); };
+    } # foreach
 
     if ($cmd eq 'rput' or $cmd eq 'resumable_put') {
         my $notify = {
@@ -275,6 +272,7 @@ sub exec_cmd {
     $args->{bucket} ||= 'Bucket';
     $args->{key}    ||= basename($args->{src} || '');
 
+    qbox_hash_merge($opts, $args, 'FROM', ['headers']);
     my ($ret, $err) = $engine->$cmd($args, $opts);
     if ($verbose or ($err->{code} != 200)) {
         printf STDERR "%d %s\n", $err->{code}, $err->{message};
@@ -296,14 +294,62 @@ sub oneshot {
     exec_cmd($engine, $args);
 } # oneshot
 
+my $brace_re = undef;
+$brace_re = qr/\{ (?: [^\{\}]* | (??{ $brace_re }) ) \}/x;
+my $bracket_re = undef;
+$bracket_re = qr/\[ (?: [^\[\]]* | (??{ $bracket_re }) ) \]/x;
+my $json_re = qr/(?:$brace_re|$bracket_re)/;
+
+sub parse_args {
+    my $cmd_ln = shift;
+    my $args   = shift || [];
+
+    my $remain = undef;
+
+    $cmd_ln =~ s/^\s+[\\]?//;
+    $cmd_ln =~ s/[#].*$//;
+    $cmd_ln =~ s/\s+$//;
+
+    if ($cmd_ln eq q{}) {
+        return $args, " \\";
+    }
+
+    if (scalar(@$args) == 0) {
+        if ($cmd_ln !~ m/^\s*(\w+)(.*)$/) {
+            return $args, " \\";
+        }
+        push @$args, $1; # cmd
+        $remain = $2;
+    }
+
+    if ($remain eq q{}) {
+        return $args, $remain;
+    }
+    
+    while ($remain =~ m/([^\s=]+=(?:$json_re|\S+))\s*/gc) {
+        push @$args, $1;
+    } # while
+
+    return $args, substr($remain, pos($remain));
+} # parse_args
+
 sub exec_file {
     my $engine = shift;
     my $fh     = shift;
 
+    my $args   = undef;
+    my $remain = q{};
     while (my $cmd_ln = <$fh>) {
         chomp($cmd_ln);
-        my $args = [split(/\s+/, $cmd_ln)];
+
+        ($args, $remain) = parse_args("${remain}${cmd_ln}", $args);
+        if ($remain) {
+            next;
+        }
+
         exec_cmd($engine, $args);
+        $args   = undef;
+        $remain = q{};
     } # while
 } # exec_file
 
@@ -343,17 +389,6 @@ my ($args, $options) = get_opts(\@ARGV);
 QBox::Stub::set_stub(sub {
     my ($data, $title, $context) = @_;
 
-    # may modify http headers
-    if ($title =~ m/^(.+)[.]headers$/) {
-        my $svc = $1;
-        if (ref($rc->{headers}{all}) eq 'HASH') {
-            qbox_hash_merge($$context, $rc->{headers}{all}, 'FROM');
-        }
-        if (ref($rc->{headers}{$svc}) eq 'HASH') {
-            qbox_hash_merge($$context, $rc->{headers}{$svc}, 'FROM');
-        }
-    }
-
     # may echo context
     if ($debug) {
         my $type = ref($$context);
@@ -364,6 +399,8 @@ QBox::Stub::set_stub(sub {
             print STDERR "${title}=[$${context}]\n";
         }
     }
+
+    return 1;
 });
 
 eval {
