@@ -52,6 +52,10 @@ sub qbox_curl_call_pre {
 
     my $curl = Net::Curl::Easy->new();
 
+    if (ref($opts->{headers}) eq 'HASH') {
+        qbox_hash_merge($headers, $opts->{headers}, 'FROM');
+    }
+
     my $api = $opts->{api} || 'unknown_api';
     QBox::Stub::call_stub("${api}.url", \$url);
     QBox::Stub::call_stub("${api}.headers", \$headers);

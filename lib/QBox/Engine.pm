@@ -75,6 +75,7 @@ sub resumable_put {
     my $self   = shift;
     my $params = shift;
     my $notify = $params->{notify} || {};
+    my $opts   = shift || {};
 
     my $rs_params = $rs_get_params->($params);
 
@@ -185,7 +186,7 @@ $exec = sub {
     my $svc  = shift;
     my $cmd  = shift;
     my $args = shift;
-    my $opts = shift;
+    my $opts = shift || {};
 
     $get_svc->($self, $svc);
     if ($svc eq 'rs') {
@@ -459,6 +460,35 @@ sub auto_auth {
     ($ret, $err) = $self->auth_by_access_key();
     return $ret, $err;
 } # auto_auth
+
+sub set_header {
+    my $self    = shift;
+    my $headers = shift;
+    my $value   = shift;
+
+    if (ref($headers) eq 'HASH') {
+        qbox_hash_merge($self->{headers}, $headers, 'FROM');
+        return;
+    }
+
+    if (ref($headers) eq q{}) {
+        $self->{headers}{$headers} = $value;
+    }
+} # set_header
+
+sub unset_header {
+    my $self  = shift;
+    my $headers = shift;
+
+    if (ref($headers) eq 'HASH') {
+        map { delete($self->{headers}{$_}) } keys(%$headers);
+        return;
+    }
+
+    if (ref($headers) eq q{}) {
+        undef($self->{headers}{$headers});
+    }
+} # unset_header
 
 1;
 
