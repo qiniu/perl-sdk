@@ -126,7 +126,7 @@ my $eu_gen_settings = sub {
     my $names = QBox::EU::wm_setting_names();
 
     if (defined($wms) and $wms ne q{}) {
-        qbox_hash_merge($settings, get_json($wms), 'FROM', $names);
+        qbox_hash_merge($settings, qbox_json_load($wms), 'FROM', $names);
     }
     qbox_hash_merge($settings, $params, 'FROM', $names);
 
@@ -360,6 +360,8 @@ sub set_auth {
     if (ref($auth) eq 'HASH') {
         qbox_hash_merge($self->{auth}, $auth, 'TO');
     }
+
+    return {}, { 'code' => 200, 'message' => 'Auth info set'};
 } # set_host
 
 sub unset_auth {
@@ -368,21 +370,20 @@ sub unset_auth {
 
     if (ref($auth) eq 'HASH') {
         map { delete($self->{auth}{$_}) } keys(%$auth);
-        return;
     }
-
-    if (ref($auth) eq q{}) {
+    elsif (ref($auth) eq q{}) {
         undef($self->{auth}{$auth});
     }
+
+    return {}, { 'code' => 200, 'message' => 'Auth info unset'};
 } # unset_host
 
 sub auth_by_password {
-    my $self     = shift;
-    my $username = shift;
-    my $password = shift;
+    my $self = shift;
+    my $args = shift;
 
-    $username ||= $self->{auth}{username};
-    $password ||= $self->{auth}{password};
+    my $username = $pickup_param->($args->{username}, $self->{auth}{username});
+    my $password = $pickup_param->($args->{password}, $self->{auth}{password});
 
     if (defined($username) and defined($password)) {
         my $client_id     = $self->{auth}{client_id};
@@ -399,33 +400,30 @@ sub auth_by_password {
             }
 
             $self->{client} = $new_client;
-            return 1, q{};
+            return {}, { 'code' => 200, 'message' => 'Login by password'};
         };
 
         if ($EVAL_ERROR) {
-            return undef, "$EVAL_ERROR";
+            return undef, { 'code' => 499, 'message' => "$EVAL_ERROR" };
         }
     }
 
-    return undef, "No username or password.";
+    return undef, { 'code' => 499, 'message' => "No username or password" };
 } # auth_by_password
 
 sub auth_by_access_key {
-    my $self     = shift;
-    my $acs_key  = shift;
-    my $scr_key  = shift;
-    my $policy   = shift;
+    my $self = shift;
+    my $args = shift;
 
-    my $new_client = undef;
-
-    $acs_key ||= $pickup_param->($self->{auth}{access_key}, 'Put your ACCESS KEY here');
-    $scr_key ||= $pickup_param->($self->{auth}{secret_key}, 'Put your SECRET KEY here');
-    $policy  ||= $self->{auth}{policy};
+    my $acs_key = $pickup_param->($args->{access_key}, $self->{auth}{access_key}, 'Put your ACCESS KEY here');
+    my $scr_key = $pickup_param->($args->{secret_key}, $self->{auth}{secret_key}, 'Put your SECRET KEY here');
+    my $policy  = $pickup_param->($args->{policy}, $self->{auth}{policy});
 
     if (not defined($acs_key) or not defined($scr_key)) {
-        return undef, "No access key or secret key.";
+        return undef, { 'code' => 499, 'message' => "No access key or secret key." };
     }
 
+    my $new_client = undef;
     eval {
         if (defined($policy) and $policy ne q{}) {
             $policy = ref($policy) eq q{} ? from_json($policy) : $policy;
@@ -440,7 +438,7 @@ sub auth_by_access_key {
     };
 
     if ($EVAL_ERROR) {
-        return undef, "$EVAL_ERROR";
+        return undef, { 'code' => 499, 'message' => "$EVAL_ERROR" };
     }
 
     if ($self->{client}) {
@@ -448,7 +446,7 @@ sub auth_by_access_key {
     }
 
     $self->{client} = $new_client;
-    return 1, q{};
+    return {}, { 'code' => 200, 'message' => 'Login by access key'};
 } # auth_by_access_key
 
 sub auto_auth {
@@ -456,7 +454,7 @@ sub auto_auth {
     my ($ret, $err) = ();
 
     ($ret, $err) = $self->auth_by_password();
-    return if $ret;
+    return $ret, $err if $ret;
 
     ($ret, $err) = $self->auth_by_access_key();
     return $ret, $err;

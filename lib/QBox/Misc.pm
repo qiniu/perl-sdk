@@ -13,6 +13,8 @@ package QBox::Misc;
 use strict;
 use warnings;
 
+use English;
+
 use MIME::Base64;
 
 our @ISA = qw(Exporter);
@@ -23,6 +25,8 @@ our @EXPORT = qw(
     qbox_base64_decode_urlsafe
 
     qbox_hash_merge
+
+    qbox_json_load
 
     qbox_make_entry
     qbox_extract_args
@@ -96,6 +100,28 @@ sub qbox_extract_args {
     }
     return splice @_, 0, scalar(@$arg_list);
 } # qbox_extract_args
+
+sub qbox_json_load {
+    my $text = shift;
+    my $json = undef;
+    
+    if (-r $text) {
+        open(my $fh, '<', $text) or die "$OS_ERROR";
+        local $INPUT_RECORD_SEPARATOR = undef;
+        $text = <$fh>;
+        close($fh);
+    }
+
+    eval {
+        $json = from_json($text);
+    };
+
+    if ($EVAL_ERROR) {
+        die "${EVAL_ERROR}(text=${text})";
+    }
+
+    return $json;
+} # qbox_json_load
 
 1;
 
