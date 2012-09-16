@@ -24,16 +24,16 @@ sub set_stub {
     my $tag     = shift;
     
     $tag = defined($tag) ? "$tag" : API_ALL;
+    my $old = $stub_settings{$tag};
 
     if (ref($handler) eq q{CODE}) {
         $stub_settings{$tag} = {
             handler => $handler,
             data    => $data,
         };
-        return 1;
     }
 
-    return undef;
+    return $old;
 } # set_stub
 
 sub unset_stub {
