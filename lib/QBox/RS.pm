@@ -166,8 +166,8 @@ sub put {
 
     my @args = (
         $self->{hosts}{up_host},
-        'rs-put' => $encoded_entry,
-        'mime'   => $mime_type,
+        'rs-put'   => $encoded_entry,
+        'mimeType' => $mime_type,
     );
 
     if (defined($custom_meta) and "$custom_meta" ne q{}) {
