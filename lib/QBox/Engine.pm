@@ -338,6 +338,8 @@ sub set_host {
     if (ref($hosts) eq 'HASH') {
         qbox_hash_merge($self->{hosts}, $hosts, 'FROM');
     }
+
+    return {}, { 'code' => 200, 'message' => 'Host info set' };
 } # set_host
 
 sub unset_host {
@@ -346,12 +348,12 @@ sub unset_host {
 
     if (ref($hosts) eq 'HASH') {
         map { delete($self->{hosts}{$_}) } keys(%$hosts);
-        return;
     }
-
-    if (ref($hosts) eq q{}) {
+    elsif (ref($hosts) eq q{}) {
         undef($self->{hosts}{$hosts});
     }
+
+    return {}, { 'code' => 200, 'message' => 'Host info unset' };
 } # unset_host
 
 sub set_auth {
@@ -468,12 +470,12 @@ sub set_header {
 
     if (ref($headers) eq 'HASH') {
         qbox_hash_merge($self->{headers}, $headers, 'FROM');
-        return;
     }
-
-    if (ref($headers) eq q{}) {
+    elsif (ref($headers) eq q{}) {
         $self->{headers}{$headers} = $value;
     }
+
+    return {}, { 'code' => 200, 'message' => 'Header info set' };
 } # set_header
 
 sub unset_header {
@@ -482,12 +484,12 @@ sub unset_header {
 
     if (ref($headers) eq 'HASH') {
         map { delete($self->{headers}{$_}) } keys(%$headers);
-        return;
     }
-
-    if (ref($headers) eq q{}) {
+    elsif (ref($headers) eq q{}) {
         undef($self->{headers}{$headers});
     }
+
+    return {}, { 'code' => 200, 'message' => 'Header info unset' };
 } # unset_header
 
 1;
