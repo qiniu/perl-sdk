@@ -270,7 +270,7 @@ sub exec_cmd {
     }
 
     $args->{bucket} ||= 'Bucket';
-    $args->{key}    ||= (defined($args->{src}) ? basename($args->{src}) : undef;
+    $args->{key}    ||= (defined($args->{src})) ? basename($args->{src}) : undef;
 
     qbox_hash_merge($opts, $args, 'FROM', ['headers']);
     my ($ret, $err) = $engine->$cmd($args, $opts);
