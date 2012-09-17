@@ -269,10 +269,8 @@ sub exec_cmd {
         $args->{notify} = $notify;
     }
 
-    $args->{bucket} ||= 'Bucket';
-    $args->{key}    ||= (defined($args->{src})) ? basename($args->{src}) : undef;
-
     qbox_hash_merge($opts, $args, 'FROM', ['headers']);
+
     my ($ret, $err) = $engine->$cmd($args, $opts);
     if ($verbose or ($err->{code} != 200)) {
         printf STDERR "%d %s\n", $err->{code}, $err->{message};

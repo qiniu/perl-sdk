@@ -14,6 +14,7 @@ use strict;
 use warnings;
 
 use English;
+use File::Basename;
 
 use JSON;                            # external library
 use Net::Curl::Easy qw(:constants);  # external library
@@ -52,35 +53,38 @@ my $get_svc = sub {
 };
 
 ### rs methods
-my $rs_get_params = sub {
-    my $params = shift;
-    my $rs_params = {
-        file            => $pickup_param->($params->{src}, $params->{file}, q{}),
-        bucket          => $pickup_param->($params->{bkt}, $params->{bucket}),
-        key             => $pickup_param->($params->{key}),
-        mime            => $pickup_param->($params->{mime}, 'application/octet-stream'),
-        meta            => $pickup_param->($params->{meta}),
-        params          => $pickup_param->($params->{params}),
-        callback_params => $pickup_param->($params->{callback_params}),
+my $rs_pickup_args = sub {
+    my $args = shift;
+    my $rs_args = {
+        file            => $pickup_param->($args->{file}, $args->{src}),
+        bucket          => $pickup_param->($args->{bucket}, $args->{bkt}),
+        key             => $pickup_param->($args->{key}),
+        mime_type       => $pickup_param->($args->{mime_type}, $args->{mime}, 'application/octet-stream'),
+        custom_meta     => $pickup_param->($args->{meta}),
+        params          => $pickup_param->($args->{params}),
+        callback_params => $pickup_param->($args->{callback_params}),
 
-        attr            => $pickup_param->($params->{attr}),
-        base            => $pickup_param->($params->{base}),
-        domain          => $pickup_param->($params->{domain}),
+        attr            => $pickup_param->($args->{attr}),
+        base            => $pickup_param->($args->{base}),
+        domain          => $pickup_param->($args->{domain}),
     };
-    return $rs_params;
+
+    $rs_args->{key} ||= (defined($rs_args->{file})) ? basename($rs_args->{file}) : undef;
+
+    return $rs_args;
 };
 
 ### up methods
 sub resumable_put {
     my $self   = shift;
-    my $params = shift;
-    my $notify = $params->{notify} || {};
+    my $args = shift;
+    my $notify = $args->{notify} || {};
     my $opts   = shift || {};
 
-    my $rs_params = $rs_get_params->($params);
+    my $rs_args = $rs_pickup_args->($args);
 
-    my $fsize     = (stat($rs_params->{file}))[7];
-    my $reader_at = QBox::ReaderAt::File->new($rs_params->{file});
+    my $fsize     = (stat($rs_args->{file}))[7];
+    my $reader_at = QBox::ReaderAt::File->new($rs_args->{file});
 
     $notify->{engine} = $self;
 
@@ -95,13 +99,13 @@ sub resumable_put {
         $notify->{blk_notify},
         $notify->{chk_notify},
         $notify,
-        qbox_make_entry($rs_params->{bucket}, $rs_params->{key}),
-        $rs_params->{mime},
+        qbox_make_entry($rs_args->{bucket}, $rs_args->{key}),
+        $rs_args->{mime_type},
         $reader_at,
         $fsize,
-        $rs_params->{meta},
-        $rs_params->{params},
-        $rs_params->{callback_params},
+        $rs_args->{custom_meta},
+        $rs_args->{params},
+        $rs_args->{callback_params},
     );
 
     if ($err->{code} != 200) {
@@ -120,21 +124,29 @@ sub resumable_put {
 
 ### eu methods
 my $eu_gen_settings = sub {
-    my $params   = shift;
+    my $args   = shift;
     my $settings = shift || {};
 
-    my $wms   = $pickup_param->($params->{wms});
+    my $wms   = $pickup_param->($args->{wms});
     my $names = QBox::EU::wm_setting_names();
 
     if (defined($wms) and $wms ne q{}) {
         qbox_hash_merge($settings, qbox_json_load($wms), 'FROM', $names);
     }
-    qbox_hash_merge($settings, $params, 'FROM', $names);
+    qbox_hash_merge($settings, $args, 'FROM', $names);
 
     return $settings;
 };
 
 my $exec = undef;
+my $rs_exec = sub {
+    my $self = shift;
+    my $cmd  = shift;
+    my $args = shift;
+    $args = $rs_pickup_args->($args);
+    return $exec->($self, 'rs', $cmd, $args, @_);
+};
+
 my %methods = (
     'auth'          => '',
     'access_key'    => 'auth',
@@ -153,14 +165,14 @@ my %methods = (
     'uc_host'       => 'hosts',
     'eu_host'       => 'hosts',
 
-    'get'           => sub { my $self = shift; return $exec->($self, 'rs', 'get', @_); },
-    'stat'          => sub { my $self = shift; return $exec->($self, 'rs', 'stat', @_); },
-    'publish'       => sub { my $self = shift; return $exec->($self, 'rs', 'publish', @_); },
-    'unpublish'     => sub { my $self = shift; return $exec->($self, 'rs', 'unpublish', @_); },
-    'put_auth'      => sub { my $self = shift; return $exec->($self, 'rs', 'put_auth', @_); },
-    'put_file'      => sub { my $self = shift; return $exec->($self, 'rs', 'put_file', @_); },
-    'delete'        => sub { my $self = shift; return $exec->($self, 'rs', 'delete', @_); },
-    'drop'          => sub { my $self = shift; return $exec->($self, 'rs', 'drop', @_); },
+    'get'           => sub { my $self = shift; return $rs_exec->($self, 'get', @_); },
+    'stat'          => sub { my $self = shift; return $rs_exec->($self, 'stat', @_); },
+    'publish'       => sub { my $self = shift; return $rs_exec->($self, 'publish', @_); },
+    'unpublish'     => sub { my $self = shift; return $rs_exec->($self, 'unpublish', @_); },
+    'put_auth'      => sub { my $self = shift; return $rs_exec->($self, 'put_auth', @_); },
+    'put_file'      => sub { my $self = shift; return $rs_exec->($self, 'put_file', @_); },
+    'delete'        => sub { my $self = shift; return $rs_exec->($self, 'delete', @_); },
+    'drop'          => sub { my $self = shift; return $rs_exec->($self, 'drop', @_); },
     'query'         => sub { my $self = shift; return $exec->($self, 'up', 'query', @_); },
     'wmget'         => sub { my $self = shift; return $exec->($self, 'eu', 'wmget', @_); },
     'wmset'         => sub { my $self = shift; return $exec->($self, 'eu', 'wmset', @_); },
@@ -189,9 +201,6 @@ $exec = sub {
     my $opts = shift || {};
 
     $get_svc->($self, $svc);
-    if ($svc eq 'rs') {
-        $args = $rs_get_params->($args);
-    }
 
     my $svc_host = $self->{svc}{$svc};
     return $svc_host->$cmd($args, $opts);
@@ -248,38 +257,38 @@ sub AUTOLOAD {
 
 sub wmmod {
     my $self   = shift;
-    my $params = shift;
+    my $args = shift;
 
-    my ($settings, $err) = $self->wmget($params);
+    my ($settings, $err) = $self->wmget($args);
     if ($err->{code} != 200) {
         return undef, $err;
     }
 
-    $settings = $eu_gen_settings->($params, $settings);
+    $settings = $eu_gen_settings->($args, $settings);
     return $self->wmset($settings);
 } # wmmod
 
 sub put_auth_file {
     my $self   = shift;
-    my $params = shift;
+    my $args = shift;
 
-    my ($ret, $err) = $self->put_auth_ex($params);
+    my ($ret, $err) = $self->put_auth_ex($args);
     return $ret, $err if ($err->{code} != 200);
 
-    my $rs_params = $params;
-    my $entry     = qbox_make_entry($rs_params->{bucket}, $rs_params->{key});
-    my $mime      = $pickup_param->($rs_params->{mime}, 'application/octet-stream');
+    my $rs_args = $rs_pickup_args->($args);
+    my $entry   = qbox_make_entry($rs_args->{bucket}, $rs_args->{key});
+    my $mime    = $pickup_param->($rs_args->{mime}, 'application/octet-stream');
 
-    $entry        = qbox_base64_encode_urlsafe($entry);
-    $mime         = qbox_base64_encode_urlsafe($mime);
+    $entry      = qbox_base64_encode_urlsafe($entry);
+    $mime       = qbox_base64_encode_urlsafe($mime);
 
     my $body = {
         action => "/rs-put/${entry}/mimeType/${mime}",
-        params => $pickup_param->($rs_params->{params}, q{}),
+        params => $pickup_param->($rs_args->{params}, q{}),
     };
     
     my $file_body = {
-        file => $rs_params->{file},
+        file => $rs_args->{file},
     };
 
     my $form = qbox_curl_make_multipart_form($body, $file_body);
