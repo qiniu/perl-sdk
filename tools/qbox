@@ -303,7 +303,8 @@ sub parse_args {
 
     my $remain = undef;
 
-    $cmd_ln =~ s/^\s+[\\]?//;
+    $cmd_ln =~ s/^\s+//;
+    $cmd_ln =~ s/^[\\]//;
     $cmd_ln =~ s/[#].*$//;
     $cmd_ln =~ s/\s+$//;
 
@@ -317,6 +318,9 @@ sub parse_args {
         }
         push @$args, $1; # cmd
         $remain = $2;
+    }
+    else {
+        $remain = $cmd_ln;
     }
 
     if ($remain eq q{}) {
