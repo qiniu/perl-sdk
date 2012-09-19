@@ -63,9 +63,9 @@ sub qbox_up_mkfile {
     return &mkfile;
 } # qbox_up_mkfile
 
-sub qbox_up_put {
-    return &put;
-} # qbox_up_put
+sub qbox_up_put_blocks_one_by_one {
+    return &put_blocks_one_by_one;
+} # qbox_up_put_blocks_one_by_one
 
 ### package functions
 sub reform_checksums {
