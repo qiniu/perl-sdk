@@ -248,7 +248,7 @@ sub resumable_put {
     $prog ||= QBox::UP::new_progress($fsize);
 
     my $up = QBox::UP->new($self->{client}, $self->{hosts});
-    my ($ret, $err) = $up->put(
+    my ($ret, $err) = $up->put_blocks_one_by_one(
         $reader_at,
         $fsize,
         $prog,

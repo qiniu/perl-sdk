@@ -119,9 +119,9 @@ sub new_progress {
         push @{$prog->{checksums}}, { value => undef };
         push @{$prog->{progs}}, {};
 
-        $prog->{progs}[$i]{ctx}      = undef;
-        $prog->{progs}[$i]{offset}   = 0;
-        $prog->{progs}[$i]{err_code} = 0;
+        $prog->{progs}[$i]{ctx}       = undef;
+        $prog->{progs}[$i]{offset}    = 0;
+        $prog->{progs}[$i]{err_code}  = 0;
         $prog->{progs}[$i]{rest_size} = ($rest > QBOX_UP_BLOCK_SIZE) ? QBOX_UP_BLOCK_SIZE : $rest;
 
         $rest -= $prog->{progs}[$i]{rest_size};
@@ -333,7 +333,7 @@ sub mkfile {
     return $self->{client}->call_with_buffer($url, $ctx_buff, $ctx_size, $opts);
 } # mkfile
 
-sub put {
+sub put_blocks_one_by_one {
     my $self = shift;
     my ($reader_at, $fsize, $prog, $blk_notify, $chk_notify, $notify_params, $opts) =
         qbox_extract_args([qw{reader_at fsize prog blk_notify chk_notify notify_params}], @_);
@@ -378,7 +378,7 @@ sub put {
     } # for
 
     return $ret, { code => 200, message => 'OK' };
-} # put
+} # put_blocks_one_by_one
 
 sub query {
     my $self = shift;
