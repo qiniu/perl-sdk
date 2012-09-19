@@ -244,9 +244,15 @@ sub exec_cmd {
     my $args   = shift;
     my $opts   = shift || {};
 
-    print "> @$args\n";
+    my $first = shift(@$args) || q{};
+    my $cmd = lc($first);
+    if ($verbose > 1 or $cmd ne 'set_auth') {
+        print "> $first @$args\n";
+    }
+    else {
+        print "> $first ...\n";
+    }
 
-    my $cmd = shift(@$args);
     $args = { map { split('=', $_, 2) } @$args };
     foreach my $value (values(%$args)) {
         eval { $value = from_json($value); };
