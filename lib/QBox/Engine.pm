@@ -52,6 +52,34 @@ my $get_svc = sub {
     return $self->{svc}{$svc};
 };
 
+my $prepare_args = sub {
+    my $self = shift;
+    my $args = shift;
+    my $opts = shift;
+
+    my $new_args = undef;
+    if (ref($self->{default_args}) eq 'HASH') {
+        $new_args = {};
+        qbox_hash_merge($new_args, $self->{default_args}, 'FROM');
+        qbox_hash_merge($new_args, $args, 'FROM');
+    }
+    else {
+        $new_args = $args;
+    }
+
+    my $new_opts = undef;
+    if (ref($self->{default_opts}) eq 'HASH') {
+        $new_opts = {};
+        qbox_hash_merge($new_opts, $self->{default_opts}, 'FROM');
+        qbox_hash_merge($new_opts, $opts, 'FROM');
+    }
+    else {
+        $new_opts = $opts;
+    }
+
+    return $new_args, $new_opts;
+};
+
 ### rs methods
 my $rs_pickup_args = sub {
     my $args = shift;
@@ -74,14 +102,52 @@ my $rs_pickup_args = sub {
     return $rs_args;
 };
 
+sub put_auth_file {
+    my $self = shift;
+    my $args = shift;
+    my $opts = shift || {};
+
+    my ($new_args, $new_opts) = $prepare_args->($self, $args, $opts);
+
+    my ($ret, $err) = $self->put_auth_ex($new_args);
+    return $ret, $err if ($err->{code} != 200);
+
+    my $rs_args = $rs_pickup_args->($new_args);
+    my $entry   = qbox_make_entry($rs_args->{bucket}, $rs_args->{key});
+    my $mime    = $pickup_param->($rs_args->{mime}, 'application/octet-stream');
+
+    $entry      = qbox_base64_encode_urlsafe($entry);
+    $mime       = qbox_base64_encode_urlsafe($mime);
+
+    my $body = {
+        action => "/rs-put/${entry}/mimeType/${mime}",
+        params => $pickup_param->($rs_args->{params}, q{}),
+    };
+    
+    my $file_body = {
+        file => $rs_args->{file},
+    };
+
+    my $form = qbox_curl_make_multipart_form($body, $file_body);
+    my $curl = qbox_curl_call_pre(
+        $ret->{url},
+        undef,
+        { 'api' => 'rs.put-auth-file' }
+    );
+    $curl->setopt(CURLOPT_HTTPPOST, $form);
+    return qbox_curl_call_core($curl);
+} # put_auth_file
+
 ### up methods
 sub resumable_put {
     my $self   = shift;
-    my $args = shift;
-    my $notify = $args->{notify} || {};
+    my $args   = shift;
     my $opts   = shift || {};
 
-    my $rs_args = $rs_pickup_args->($args);
+    my ($new_args, $new_opts) = $prepare_args->($self, $args, $opts);
+
+    my $notify  = $new_args->{notify} || {};
+    my $rs_args = $rs_pickup_args->($new_args);
 
     my $fsize     = (stat($rs_args->{file}))[7];
     my $reader_at = QBox::ReaderAt::File->new($rs_args->{file});
@@ -138,16 +204,80 @@ my $eu_gen_settings = sub {
     return $settings;
 };
 
-my $exec = undef;
+sub wmmod {
+    my $self = shift;
+    my $args = shift;
+    my $opts = shift;
+
+    my ($new_args, $new_opts) = $prepare_args->($self, $args, $opts);
+
+    my ($settings, $err) = $self->wmget($new_args);
+    if ($err->{code} != 200) {
+        return undef, $err;
+    }
+
+    $settings = $eu_gen_settings->($new_args, $settings);
+    return $self->wmset($settings);
+} # wmmod
+
+### general methods
 my $rs_exec = sub {
     my $self = shift;
     my $cmd  = shift;
-    my $args = shift;
-    $args = $rs_pickup_args->($args);
-    return $exec->($self, 'rs', $cmd, $args, @_);
+    my $args = shift || {};
+    my $opts = shift || {};
+
+    my ($new_args, $new_opts) = $prepare_args->($self, $args, $opts);
+    $new_args = $rs_pickup_args->($new_args);
+
+    $get_svc->($self, 'rs');
+    my $svc_host = $self->{svc}{rs};
+    return $svc_host->$cmd($new_args, $new_opts);
+};
+
+my $up_exec = sub {
+    my $self = shift;
+    my $cmd  = shift;
+    my $args = shift || {};
+    my $opts = shift || {};
+
+    my ($new_args, $new_opts) = $prepare_args->($self, $args, $opts);
+
+    $get_svc->($self, 'up');
+    my $svc_host = $self->{svc}{up};
+    return $svc_host->$cmd($new_args, $new_opts);
+};
+
+my $uc_exec = sub {
+    my $self = shift;
+    my $cmd  = shift;
+    my $args = shift || {};
+    my $opts = shift || {};
+
+    my ($new_args, $new_opts) = $prepare_args->($self, $args, $opts);
+
+    $get_svc->($self, 'uc');
+    my $svc_host = $self->{svc}{uc};
+    return $svc_host->$cmd($new_args, $new_opts);
+};
+
+my $eu_exec = sub {
+    my $self = shift;
+    my $cmd  = shift;
+    my $args = shift || {};
+    my $opts = shift || {};
+
+    my ($new_args, $new_opts) = $prepare_args->($self, $args, $opts);
+
+    $get_svc->($self, 'eu');
+    my $svc_host = $self->{svc}{eu};
+    return $svc_host->$cmd($new_args, $new_opts);
 };
 
 my %methods = (
+    'default_args'  => '',
+    'default_opts'  => '',
+
     'auth'          => '',
     'access_key'    => 'auth',
     'secret_key'    => 'auth',
@@ -165,24 +295,27 @@ my %methods = (
     'uc_host'       => 'hosts',
     'eu_host'       => 'hosts',
 
-    'get'           => sub { my $self = shift; return $rs_exec->($self, 'get', @_); },
-    'stat'          => sub { my $self = shift; return $rs_exec->($self, 'stat', @_); },
-    'publish'       => sub { my $self = shift; return $rs_exec->($self, 'publish', @_); },
-    'unpublish'     => sub { my $self = shift; return $rs_exec->($self, 'unpublish', @_); },
-    'put_auth'      => sub { my $self = shift; return $rs_exec->($self, 'put_auth', @_); },
-    'put_file'      => sub { my $self = shift; return $rs_exec->($self, 'put_file', @_); },
-    'delete'        => sub { my $self = shift; return $rs_exec->($self, 'delete', @_); },
-    'drop'          => sub { my $self = shift; return $rs_exec->($self, 'drop', @_); },
-    'query'         => sub { my $self = shift; return $exec->($self, 'up', 'query', @_); },
-    'mkblock'       => sub { my $self = shift; return $exec->($self, 'up', 'mkblock', @_); },
-    'blockput'      => sub { my $self = shift; return $exec->($self, 'up', 'blockput', @_); },
-    'resumable_blockput' => sub { my $self = shift; return $exec->($self, 'up', 'resumable_blockput', @_); },
-    'mkfile'        => sub { my $self = shift; return $exec->($self, 'up', 'mkfile', @_); },
-    'wmget'         => sub { my $self = shift; return $exec->($self, 'eu', 'wmget', @_); },
-    'wmset'         => sub { my $self = shift; return $exec->($self, 'eu', 'wmset', @_); },
-    'app_info'      => sub { my $self = shift; return $exec->($self, 'uc', 'app_info', @_); },
-    'new_access'    => sub { my $self = shift; return $exec->($self, 'uc', 'new_access', @_); },
-    'delete_access' => sub { my $self = shift; return $exec->($self, 'uc', 'delete_access', @_); },
+    'get'                => $rs_exec,
+    'stat'               => $rs_exec,
+    'publish'            => $rs_exec,
+    'unpublish'          => $rs_exec,
+    'put_auth'           => $rs_exec,
+    'put_file'           => $rs_exec,
+    'delete'             => $rs_exec,
+    'drop'               => $rs_exec,
+
+    'query'              => $up_exec,
+    'mkblock'            => $up_exec,
+    'blockput'           => $up_exec,
+    'resumable_blockput' => $up_exec,
+    'mkfile'             => $up_exec,
+
+    'wmget'              => $eu_exec,
+    'wmset'              => $eu_exec,
+
+    'app_info'           => $uc_exec,
+    'new_access'         => $uc_exec,
+    'delete_access'      => $uc_exec,
 );
 
 # make aliases
@@ -197,22 +330,8 @@ $methods{appi}  = $methods{app_info};
 $methods{nacs}  = $methods{new_access};
 $methods{dacs}  = $methods{delete_access};
 
-$exec = sub {
-    my $self = shift;
-    my $svc  = shift;
-    my $cmd  = shift;
-    my $args = shift;
-    my $opts = shift || {};
-
-    $get_svc->($self, $svc);
-
-    my $svc_host = $self->{svc}{$svc};
-    return $svc_host->$cmd($args, $opts);
-};
-
-our $AUTOLOAD;
 sub AUTOLOAD {
-    my $nm = $AUTOLOAD;
+    my $nm = our $AUTOLOAD;
     $nm =~ s/^.+://;
 
     if (not exists($methods{$nm})) {
@@ -225,7 +344,7 @@ sub AUTOLOAD {
     my $method = undef;
     my $sub = $methods{$nm};
     if (ref($sub) eq 'CODE') {
-        $method = $sub;
+        $method = sub { splice(@_, 1, 0, $nm); return &$sub; };
     }
     elsif ($sub eq q{}) {
         $method = sub {
@@ -234,7 +353,7 @@ sub AUTOLOAD {
             if (defined($new)) {
                 $self->{$nm} = $new;
             }
-            return $old;
+            return { 'old' => $old, 'new' => $new }, { 'code' => 200, 'message' => 'OK' };
         };
     }
     elsif ($sub ne q{}) {
@@ -245,65 +364,18 @@ sub AUTOLOAD {
             if (defined($new)) {
                 $self->{$sub}{$nm} = $new;
             }
-            return $old;
+            return { 'old' => $old, 'new' => $new }, { 'code' => 200, 'message' => 'OK' };
         };
     }
 
     if (defined($method)) {
         no strict;
-        #*$QBox::Engine::{$nm}{CODE} = $method;
         *$AUTOLOAD = $method;
         use strict;
 
         goto &$AUTOLOAD;
     }
 } # AUTOLOAD
-
-sub wmmod {
-    my $self   = shift;
-    my $args = shift;
-
-    my ($settings, $err) = $self->wmget($args);
-    if ($err->{code} != 200) {
-        return undef, $err;
-    }
-
-    $settings = $eu_gen_settings->($args, $settings);
-    return $self->wmset($settings);
-} # wmmod
-
-sub put_auth_file {
-    my $self   = shift;
-    my $args = shift;
-
-    my ($ret, $err) = $self->put_auth_ex($args);
-    return $ret, $err if ($err->{code} != 200);
-
-    my $rs_args = $rs_pickup_args->($args);
-    my $entry   = qbox_make_entry($rs_args->{bucket}, $rs_args->{key});
-    my $mime    = $pickup_param->($rs_args->{mime}, 'application/octet-stream');
-
-    $entry      = qbox_base64_encode_urlsafe($entry);
-    $mime       = qbox_base64_encode_urlsafe($mime);
-
-    my $body = {
-        action => "/rs-put/${entry}/mimeType/${mime}",
-        params => $pickup_param->($rs_args->{params}, q{}),
-    };
-    
-    my $file_body = {
-        file => $rs_args->{file},
-    };
-
-    my $form = qbox_curl_make_multipart_form($body, $file_body);
-    my $curl = qbox_curl_call_pre(
-        $ret->{url},
-        undef,
-        { 'api' => 'rs.put-auth-file' }
-    );
-    $curl->setopt(CURLOPT_HTTPPOST, $form);
-    return qbox_curl_call_core($curl);
-} # put_auth_file
 
 ### init methods
 sub new {
