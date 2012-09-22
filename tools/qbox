@@ -174,7 +174,6 @@ my $conf    = undef;
 my $debug   = undef;
 my $verbose = 0;
 my $pretty  = undef;
-my $batch   = undef;
 my $prompt  = undef;
 
 sub fmt_json {
@@ -363,7 +362,7 @@ sub exec_file {
     } # while
 } # exec_file
 
-sub batch {
+sub slave {
     my $engine = shift;
     my $files  = shift || [];
     
@@ -386,7 +385,7 @@ sub batch {
     } # foreach
 
     return;
-} # batch
+} # slave
 
 sub prompt {
     my $engine = shift;
@@ -417,7 +416,7 @@ eval {
     my $engine = QBox::Engine->new();
 
     if (scalar(@{$options->{cmd_files}}) > 0) {
-        batch($engine, $options->{cmd_files});
+        slave($engine, $options->{cmd_files});
     }
 
     my $cmd = $args->[0] || '';
@@ -427,7 +426,7 @@ eval {
 
     if (not -t STDIN) {
         if (not eof(STDIN)) {
-            batch($engine, [\*STDIN]);
+            slave($engine, [\*STDIN]);
         }
 
         if ($prompt) {
