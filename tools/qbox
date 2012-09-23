@@ -3,6 +3,7 @@
 use strict;
 use warnings;
 
+use IO::Handle;
 use English;
 use File::Basename;
 
@@ -11,6 +12,8 @@ use JSON; # external library
 use QBox::Engine;
 use QBox::Stub;
 use QBox::Misc;
+
+use QBox::Tools::SlaveManager;
 
 ### up callbacks
 my $up_read_progress_as_plain_text = sub {
@@ -170,7 +173,8 @@ my $up_chk_notify = sub {
 };
 
 ### helper routines
-my $conf    = undef;
+my $slave_mgr = undef;
+
 my $debug   = undef;
 my $verbose = 0;
 my $pretty  = undef;
@@ -238,24 +242,64 @@ sub get_opts {
     return $fixed, $options;
 } # get_opts
 
+my $slave_callback = sub {
+    my $proc   = shift;
+    my $params = shift;
+
+    my $callback_ln = readline($proc->{mgr_read});
+    chomp($callback_ln);
+    printf "job%d %s\n", $proc->{job}, $callback_ln;
+    return undef; # no longer busy
+};
+
+sub run_in_slave {
+    my $engine = shift;
+    my $cmd_ln = shift;
+    my $opts   = shift || {};
+
+    my $proc = $slave_mgr->start($slave_callback);
+    if ($proc->{child}) {
+        $verbose = 0;
+        $debug   = undef;
+        $pretty  = undef;
+
+        $proc->{work_write}->autoflush(1);
+        $proc->{work_err}->autoflush(1);
+        slave($engine, [\*STDIN]);
+        exit(0);
+    }
+
+    $proc->{mgr_write}->autoflush(1);
+    $cmd_ln =~ s/\s*[&](?:\d*)\s*$//;
+    print {$proc->{mgr_write}} "$cmd_ln\n";
+} # run_in_slave
+
 sub exec_cmd {
     my $engine = shift;
+    my $cmd_ln = shift;
     my $args   = shift;
     my $opts   = shift || {};
 
     my $first = shift(@$args) || q{};
     my $cmd = lc($first);
-    if ($verbose > 1 or $cmd ne 'set_auth') {
-        print "> $first @$args\n";
-    }
-    else {
-        print "> $first ...\n";
+    if ($verbose > 0) {
+        if ($verbose < 2 and $cmd eq 'set_auth') {
+            print "> $first ...\n";
+        }
+        else {
+            print "> $cmd_ln\n";
+        }
     }
 
     $args = { map { split('=', $_, 2) } @$args };
     foreach my $value (values(%$args)) {
         eval { $value = from_json($value); };
     } # foreach
+
+    if (defined($opts->{_slave})) {
+        delete $opts->{_slave};
+        return run_in_slave($engine, $cmd_ln, $opts);
+    }
 
     if ($cmd eq 'rput' or $cmd eq 'resumable_put') {
         my $notify = {
@@ -277,24 +321,29 @@ sub exec_cmd {
     qbox_hash_merge($opts, $args, 'FROM', ['headers']);
 
     my ($ret, $err) = $engine->$cmd($args, $opts);
-    if ($verbose or ($err->{code} != 200)) {
-        printf STDERR "%d %s\n", $err->{code}, $err->{message};
-    }
+    my $msg = $err->{message};
+    $msg =~ s/(?!\\)[']/\\'/g;
 
-    printf "%s\n", fmt_json($ret || {});
+    printf "code=%d message='%s' ret=%s\n", $err->{code}, $msg, fmt_json($ret || {});
+    if ($pretty) {
+        print STDOUT "\n";
+    }
     return $ret, $err;
 } # exec_cmd
 
 sub oneshot {
     my $engine = shift;
+    my $cmd_ln = shift;
     my $args   = shift;
     my $opts   = shift;
 
-    my ($ret, $err) = exec_cmd($engine, ['auth_by_password']);
+    my $cmd = 'auth_by_password';
+    my ($ret, $err) = exec_cmd($engine, $cmd, [$cmd]);
     if (not defined($ret)) {
-        ($ret, $err) = exec_cmd($engine, ['auth_by_access_key']);
+        $cmd = 'auth_by_access_key';
+        ($ret, $err) = exec_cmd($engine, $cmd, [$cmd]);
     }
-    exec_cmd($engine, $args);
+    exec_cmd($engine, $cmd_ln, $args);
 } # oneshot
 
 my $brace_re = undef;
@@ -305,6 +354,7 @@ $bracket_re = qr/\[ (?: [^\[\]] | (??{ $bracket_re }) )* \]/x;
 sub parse_args {
     my $cmd_ln = shift;
     my $args   = shift || [];
+    my $opts   = shift || {};
 
     my $remain = undef;
 
@@ -314,12 +364,12 @@ sub parse_args {
     $cmd_ln =~ s/\s+$//;
 
     if ($cmd_ln eq q{}) {
-        return $args, " \\";
+        return $args, $opts, " \\";
     }
 
     if (scalar(@$args) == 0) {
         if ($cmd_ln !~ m/^\s*(\w+)(.*)$/) {
-            return $args, " \\";
+            return $args, $opts, " \\";
         }
         push @$args, $1; # cmd
         $remain = $2;
@@ -328,8 +378,14 @@ sub parse_args {
         $remain = $cmd_ln;
     }
 
+    if ($remain =~ m/^(.*)\s+[&]((?:\d+)?)$/) {
+        my $job = $2 || 0;
+        $opts->{_slave} = $job + 0;
+        $remain = $1;
+    }
+
     if ($remain eq q{}) {
-        return $args, $remain;
+        return $args, $opts, $remain;
     }
     
     while ($remain =~ m/([^\s=]+=(?:$brace_re|$bracket_re|\S+))\s*/gc) {
@@ -337,9 +393,9 @@ sub parse_args {
     } # while
 
     if (pos($remain) < length($remain)) {
-        return $args, substr($remain, pos($remain));
+        return $args, $opts, substr($remain, pos($remain));
     }
-    return $args, q{};
+    return $args, $opts, q{};
 } # parse_args
 
 sub exec_file {
@@ -347,16 +403,27 @@ sub exec_file {
     my $fh     = shift;
 
     my $args   = undef;
+    my $opts   = undef;
     my $remain = q{};
-    while (my $cmd_ln = <$fh>) {
-        chomp($cmd_ln);
+    while (1) {
+        $slave_mgr->check_done();
 
-        ($args, $remain) = parse_args("${remain}${cmd_ln}", $args);
-        if ($remain) {
-            next;
+        my $cmd_ln = <$fh>;
+
+        if (not defined($cmd_ln)) {
+            if ($slave_mgr->is_busy()){
+                sleep(1);
+                next;
+            }
+            last;
         }
 
-        exec_cmd($engine, $args);
+        chomp($cmd_ln);
+
+        ($args, $opts, $remain) = parse_args("${remain}${cmd_ln}", $args);
+        next if ($remain);
+
+        exec_cmd($engine, $cmd_ln, $args, $opts);
         $args   = undef;
         $remain = q{};
     } # while
@@ -383,8 +450,6 @@ sub slave {
             die "$EVAL_ERROR";
         }
     } # foreach
-
-    return;
 } # slave
 
 sub prompt {
@@ -413,6 +478,8 @@ QBox::Stub::set_stub(sub {
 });
 
 eval {
+    $slave_mgr = QBox::Tools::SlaveManager->new();
+
     my $engine = QBox::Engine->new();
 
     if (scalar(@{$options->{cmd_files}}) > 0) {
@@ -421,7 +488,7 @@ eval {
 
     my $cmd = $args->[0] || '';
     if ($cmd =~ m/^\w+$/) {
-        oneshot($engine, $args);
+        oneshot($engine, "@$args", $args);
     }
 
     if (not -t STDIN) {
