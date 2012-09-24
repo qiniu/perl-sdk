@@ -174,6 +174,7 @@ my $up_chk_notify = sub {
 
 ### helper routines
 my $slave_mgr = undef;
+my $cmd_count = 0;
 
 my $debug   = undef;
 my $verbose = 0;
@@ -248,17 +249,21 @@ my $slave_callback = sub {
 
     my $callback_ln = readline($proc->{mgr_read});
     chomp($callback_ln);
-    printf "job%d %s\n", $proc->{job}, $callback_ln;
+    $callback_ln =~ s/^#\d+\s+//;
+    printf "#%d &%d %s\n", $params->{cmd_idx}, $proc->{job}, $callback_ln;
     return undef; # no longer busy
 };
 
 sub run_in_slave {
-    my $engine = shift;
-    my $cmd_ln = shift;
-    my $opts   = shift || {};
+    my $engine  = shift;
+    my $cmd_idx = shift;
+    my $cmd_ln  = shift;
+    my $opts    = shift || {};
 
-    my $proc = $slave_mgr->start($slave_callback);
+    my $proc = $slave_mgr->start($slave_callback, { 'cmd_idx' => $cmd_idx });
     if ($proc->{child}) {
+        $cmd_count = 0;
+
         $verbose = 0;
         $debug   = undef;
         $pretty  = undef;
@@ -280,14 +285,16 @@ sub exec_cmd {
     my $args   = shift;
     my $opts   = shift || {};
 
+    $cmd_count += 1;
+
     my $first = shift(@$args) || q{};
     my $cmd = lc($first);
     if ($verbose > 0) {
         if ($verbose < 2 and $cmd eq 'set_auth') {
-            print "> $first ...\n";
+            print "> $first ... #$cmd_count\n";
         }
         else {
-            print "> $cmd_ln\n";
+            print "> $cmd_ln #$cmd_count\n";
         }
     }
 
@@ -298,7 +305,7 @@ sub exec_cmd {
 
     if (defined($opts->{_slave})) {
         delete $opts->{_slave};
-        return run_in_slave($engine, $cmd_ln, $opts);
+        return run_in_slave($engine, $cmd_count, $cmd_ln, $opts);
     }
 
     if ($cmd eq 'rput' or $cmd eq 'resumable_put') {
@@ -324,7 +331,7 @@ sub exec_cmd {
     my $msg = $err->{message};
     $msg =~ s/(?!\\)[']/\\'/g;
 
-    printf "code=%d message='%s' ret=%s\n", $err->{code}, $msg, fmt_json($ret || {});
+    printf "#%d code=%d message='%s' ret=%s\n", $cmd_count, $err->{code}, $msg, fmt_json($ret || {});
     if ($pretty) {
         print STDOUT "\n";
     }
