@@ -176,6 +176,8 @@ my $up_chk_notify = sub {
 my $slave_mgr = undef;
 my $cmd_count = 0;
 
+my $feedback_timestamp = undef;
+
 my $debug   = undef;
 my $verbose = 0;
 my $pretty  = undef;
@@ -226,6 +228,11 @@ sub get_opts {
             next;
         }
 
+        if ($arg =~ m/^(?:--timestamp|-T)/) {
+            $feedback_timestamp = 1;
+            next;
+        }
+
         if ($arg =~ m/^(?:--help|-h)/) {
             my $prog_nm = basename($0);
             print "Usage: ${prog_nm} [OPTION] CMD [PARAM=ARG [PARAM=ARG [...]]]\n";
@@ -243,14 +250,62 @@ sub get_opts {
     return $fixed, $options;
 } # get_opts
 
+sub format_result {
+    my $cmd_idx = shift;
+    my $job_idx = shift;
+    my $code    = shift;
+    my $message = shift;
+    my $result  = shift || {};
+
+    my @fields = ();
+
+    if ($feedback_timestamp) {
+        my ($sec, $min, $hour, $day, $mon, $year) = localtime(time);
+        my $ts = sprintf("%04d-%02d-%02d %02d:%02d:%02d", $year + 1900, $mon + 1, $day, $hour, $min, $sec);
+        push @fields, $ts;
+    }
+
+    push @fields, "#${cmd_idx}";
+
+    if ($job_idx) {
+        push @fields, "&${job_idx}";
+    }
+
+    push @fields, "code=${code}";
+
+    $message =~ s/(?!\\)[']/\\'/g;
+    push @fields, "message='${message}'";
+
+    push @fields, sprintf("ret=%s", fmt_json($result));
+
+    return join(q{ }, @fields);
+} # format_result
+
 my $slave_callback = sub {
     my $proc   = shift;
     my $params = shift;
 
     my $callback_ln = readline($proc->{mgr_read});
     chomp($callback_ln);
-    $callback_ln =~ s/^#\d+\s+//;
-    printf "#%d &%d %s\n", $params->{cmd_idx}, $proc->{job}, $callback_ln;
+
+    $callback_ln =~ s/^[#]\d+\s+ (?:[&]\d+)?//x;
+    trim_ln($callback_ln);
+
+    my ($args, $opts) = split_args($callback_ln, []);
+    $args = args_to_hash($args);
+
+    my $output = format_result(
+        $params->{cmd_idx},
+        $proc->{job},
+        $args->{code},
+        $args->{message},
+        $args->{ret},
+    );
+    print $output, "\n";
+    if ($pretty) {
+        print "\n";
+    }
+
     return undef; # no longer busy
 };
 
@@ -267,6 +322,8 @@ sub run_in_slave {
         $verbose = 0;
         $debug   = undef;
         $pretty  = undef;
+
+        $feedback_timestamp = undef;
 
         $proc->{work_write}->autoflush(1);
         $proc->{work_err}->autoflush(1);
@@ -298,10 +355,7 @@ sub exec_cmd {
         }
     }
 
-    $args = { map { split('=', $_, 2) } @$args };
-    foreach my $value (values(%$args)) {
-        eval { $value = from_json($value); };
-    } # foreach
+    $args = args_to_hash($args);
 
     if (defined($opts->{_slave})) {
         delete $opts->{_slave};
@@ -328,13 +382,13 @@ sub exec_cmd {
     qbox_hash_merge($opts, $args, 'FROM', ['headers']);
 
     my ($ret, $err) = $engine->$cmd($args, $opts);
-    my $msg = $err->{message};
-    $msg =~ s/(?!\\)[']/\\'/g;
 
-    printf "#%d code=%d message='%s' ret=%s\n", $cmd_count, $err->{code}, $msg, fmt_json($ret || {});
+    my $output = format_result($cmd_count, undef, $err->{code}, $err->{message}, $ret);
+    print $output, "\n";
     if ($pretty) {
-        print STDOUT "\n";
+        print "\n";
     }
+
     return $ret, $err;
 } # exec_cmd
 
@@ -357,34 +411,27 @@ my $brace_re = undef;
 $brace_re = qr/\{ (?: [^\{\}] | (??{ $brace_re }) )* \}/x;
 my $bracket_re = undef;
 $bracket_re = qr/\[ (?: [^\[\]] | (??{ $bracket_re }) )* \]/x;
+my $single_re = qr/' [^\\']* (?:\\[\\'].*)* '/x;
+my $double_re = qr/" [^\\"]* (?:\\..*)* "/x;
 
-sub parse_args {
+sub trim_ln {
+    my $ln = shift;
+    $ln =~ s/^\s+//;
+    $ln =~ s/^[\\]//;
+    $ln =~ s/[#].*$//;
+    $ln =~ s/\s+$//;
+} # trim_ln
+
+sub split_args {
     my $cmd_ln = shift;
     my $args   = shift || [];
     my $opts   = shift || {};
-
-    my $remain = undef;
-
-    $cmd_ln =~ s/^\s+//;
-    $cmd_ln =~ s/^[\\]//;
-    $cmd_ln =~ s/[#].*$//;
-    $cmd_ln =~ s/\s+$//;
 
     if ($cmd_ln eq q{}) {
         return $args, $opts, " \\";
     }
 
-    if (scalar(@$args) == 0) {
-        if ($cmd_ln !~ m/^\s*(\w+)(.*)$/) {
-            return $args, $opts, " \\";
-        }
-        push @$args, $1; # cmd
-        $remain = $2;
-    }
-    else {
-        $remain = $cmd_ln;
-    }
-
+    my $remain = $cmd_ln;
     if ($remain =~ m/^(.*)\s+[&]((?:\d+)?)$/) {
         my $job = $2 || 0;
         $opts->{_slave} = $job + 0;
@@ -395,7 +442,7 @@ sub parse_args {
         return $args, $opts, $remain;
     }
     
-    while ($remain =~ m/([^\s=]+=(?:$brace_re|$bracket_re|\S+))\s*/gc) {
+    while ($remain =~ m/([^\s=]+=(?:$double_re|$single_re|$brace_re|$bracket_re|\S+))\s*/gc) {
         push @$args, $1;
     } # while
 
@@ -403,7 +450,56 @@ sub parse_args {
         return $args, $opts, substr($remain, pos($remain));
     }
     return $args, $opts, q{};
-} # parse_args
+} # split_args
+
+sub args_to_hash {
+    my $args = shift;
+    my $new_args = { map { split('=', $_, 2) } @$args };
+    foreach my $value (values(%$new_args)) {
+        eval { $value = from_json($value); };
+
+        if ($EVAL_ERROR) {
+            if ($value =~ m/' ([^\\']* (?:\\[\\'].*)*) '/x ) {
+                $value = $1;
+                $value =~ s/\\'/'/;
+                next;
+            }
+
+            if ($value =~ m/" ([^\\"]* (?:\\..*)*) "/x ) {
+                $value = $1;
+                $value =~ s/\\"/"/;
+                next;
+            }
+        }
+    } # foreach
+    return $new_args;
+} # args_to_hash
+
+sub parse_cmd {
+    my $cmd_ln = shift;
+    my $args   = shift || [];
+    my $opts   = shift || {};
+
+    trim_ln($cmd_ln);
+
+    my $remain = undef;
+    if (scalar(@$args) == 0) {
+        if ($cmd_ln !~ m/^\s*(\w+)\s*(.*)$/) {
+            return $args, $opts, " \\";
+        }
+        push @$args, $1; # cmd
+        $remain = $2;
+    }
+    else {
+        $remain = $cmd_ln;
+    }
+
+    if ($remain eq q{}) {
+        return  $args, $opts, q{};
+    }
+
+    return split_args($remain, $args, $opts);
+} # parse_cmd
 
 sub exec_file {
     my $engine = shift;
@@ -427,7 +523,7 @@ sub exec_file {
 
         chomp($cmd_ln);
 
-        ($args, $opts, $remain) = parse_args("${remain}${cmd_ln}", $args);
+        ($args, $opts, $remain) = parse_cmd("${remain}${cmd_ln}", $args);
         next if ($remain);
 
         exec_cmd($engine, $cmd_ln, $args, $opts);
