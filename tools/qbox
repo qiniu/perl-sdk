@@ -379,7 +379,7 @@ sub exec_cmd {
         $args->{notify} = $notify;
     }
 
-    qbox_hash_merge($opts, $args, 'FROM', ['headers']);
+    qbox_hash_merge($opts->{headers} = {}, $args->{_headers}, 'FROM');
 
     my ($ret, $err) = $engine->$cmd($args, $opts);
 

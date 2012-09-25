@@ -67,15 +67,16 @@ my $prepare_args = sub {
         $new_args = $args;
     }
 
-    my $new_opts = undef;
+    my $new_opts = {
+        headers => {},
+    };
+
     if (ref($self->{default_opts}) eq 'HASH') {
-        $new_opts = {};
         qbox_hash_merge($new_opts, $self->{default_opts}, 'FROM');
-        qbox_hash_merge($new_opts, $opts, 'FROM');
     }
-    else {
-        $new_opts = $opts;
-    }
+
+    qbox_hash_merge($new_opts->{headers}, $self->{headers}, 'FROM');
+    qbox_hash_merge($new_opts, $opts, 'FROM');
 
     return $new_args, $new_opts;
 };
@@ -381,9 +382,10 @@ sub AUTOLOAD {
 sub new {
     my $class = shift || __PACKAGE__;
     my $self  = {
-        'svc'   => {},
-        'hosts' => {},
-        'auth'  => {
+        'svc'     => {},
+        'hosts'   => {},
+        'headers' => {},
+        'auth'    => {
             'username'   => undef,
             'password'   => undef,
             'access_key' => undef,
