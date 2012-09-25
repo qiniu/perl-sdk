@@ -9,10 +9,10 @@ use File::Basename;
 
 use JSON; # external library
 
-use QBox::Engine;
 use QBox::Stub;
 use QBox::Misc;
 
+use QBox::Tools::Engine;
 use QBox::Tools::SlaveManager;
 
 ### up callbacks
@@ -583,7 +583,7 @@ QBox::Stub::set_stub(sub {
 eval {
     $slave_mgr = QBox::Tools::SlaveManager->new();
 
-    my $engine = QBox::Engine->new();
+    my $engine = QBox::Tools::Engine->new();
 
     if (scalar(@{$options->{cmd_files}}) > 0) {
         slave($engine, $options->{cmd_files});
