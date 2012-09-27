@@ -103,6 +103,10 @@ my $rs_pickup_args = sub {
     return $rs_args;
 };
 
+sub putaf {
+    return &put_auth_file;
+} # putaf
+
 sub put_auth_file {
     my $self = shift;
     my $args = shift;
@@ -146,20 +150,18 @@ my $prepare_for_resumable_put = sub {
     my $opts = shift;
 
     my ($new_args, $new_opts) = $prepare_args->($self, $args, $opts);
-
-    my $notify  = $new_args->{notify} || {};
     my $rs_args = $rs_pickup_args->($new_args);
 
-    $new_args->{fsize}     = (stat($rs_args->{file}))[7];
-    $new_args->{reader_at} = QBox::ReaderAt::File->new($rs_args->{file});
+    $new_args->{fsize} ||= (stat($rs_args->{file}))[7];
 
-    $notify->{engine} = $self;
+    my $notify = $new_args->{notify} || {};
+    $notify->{engine}  = $self;
 
     if (defined($notify->{read_prog})) {
-        $new_args->{prog} = $notify->{read_prog}->($notify);
+        $new_args->{prog} ||= $notify->{read_prog}->($notify);
     }
     else {
-        $new_args->{prog} = undef;
+        $new_args->{prog} ||= QBox::UP::new_progress($new_args->{fsize});
     }
 
     return $new_args, $new_opts, $rs_args;
@@ -182,15 +184,82 @@ my $cleanup_for_resumable_put = sub {
             $notify->{end_prog}->($notify, $args->{prog});
         }
     }
+
+    if ($args->{reader_at}) {
+        $args->{reader_at}->close();
+    }
 };
 
-sub resumable_put {
+sub rbput {
+    return &resumable_blockput;
+} # rbput
+
+sub resumable_blockput {
     my $self = shift;
-    my $cmd  = shift;
     my $args = shift;
     my $opts = shift || {};
 
     my ($new_args, $new_opts, $rs_args) = $prepare_for_resumable_put->($self, $args, $opts);
+    $new_args->{reader_at} = QBox::ReaderAt::File->new($rs_args->{file});
+
+    my $blk_index = $new_args->{blk_index};
+    my $blk_prog  = $new_args->{prog}{progs}[$blk_index];
+
+    $get_svc->($self, 'up');
+    my ($ret, $err) = $self->{svc}{up}->resumable_blockput(
+        $new_args->{reader_at},
+        $blk_index,
+        $blk_prog->{offset} + $blk_prog->{rest_size},
+        $new_args->{chk_size} || QBox::Config::QBOX_PUT_CHUNK_SIZE,
+        $new_args->{retry_times} || QBox::Config::QBOX_PUT_RETRY_TIMES,
+        $blk_prog,
+    );
+
+    $cleanup_for_resumable_put->($self, $new_args, $err);
+    return $ret, $err;
+} # resumable_put_blockput
+
+sub mkfile {
+    my $self = shift;
+    my $args = shift;
+    my $opts = shift || {};
+
+    my ($new_args, $new_opts, $rs_args) = $prepare_for_resumable_put->($self, $args, $opts);
+
+    if (ref($new_args->{ctx}) eq 'ARRAY' ) {
+        for (my $i = 0; $i < scalar(@{$new_args->{ctx}}); ++$i) {
+            $new_args->{prog}{progs}[$i]{ctx} = $new_args->{ctx}[$i];
+        } # for
+    }
+
+    my $entry = qbox_make_entry($rs_args->{bucket}, $rs_args->{key}),
+
+    $get_svc->($self, 'up');
+    my ($ret, $err) = $self->{svc}{up}->mkfile(
+        $new_args->{cmd} || 'rs-mkfile',
+        $entry,
+        $new_args->{mime_type},
+        $new_args->{fsize},
+        $new_args->{params},
+        $new_args->{callback_params},
+        $new_args->{prog},
+    );
+
+    $cleanup_for_resumable_put->($self, $new_args, $err);
+    return $ret, $err;
+} # mkfile
+
+sub rput {
+    return &resumable_put;
+} # rput
+
+sub resumable_put {
+    my $self = shift;
+    my $args = shift;
+    my $opts = shift || {};
+
+    my ($new_args, $new_opts, $rs_args) = $prepare_for_resumable_put->($self, $args, $opts);
+    $new_args->{reader_at} = QBox::ReaderAt::File->new($rs_args->{file});
 
     my $ret = undef;
     my $err = undef;
@@ -233,7 +302,6 @@ my $eu_gen_settings = sub {
 
 sub wmmod {
     my $self = shift;
-    my $cmd  = shift;
     my $args = shift;
     my $opts = shift;
 
@@ -323,36 +391,32 @@ my %methods = (
     'uc_host'       => 'hosts',
     'eu_host'       => 'hosts',
 
-    'get'                => $rs_exec,
-    'stat'               => $rs_exec,
-    'publish'            => $rs_exec,
-    'unpublish'          => $rs_exec,
-    'put_auth'           => $rs_exec,
-    'put_file'           => $rs_exec,
-    'delete'             => $rs_exec,
-    'drop'               => $rs_exec,
+    'get'           => $rs_exec,
+    'stat'          => $rs_exec,
+    'publish'       => $rs_exec,
+    'unpublish'     => $rs_exec,
+    'put_auth'      => $rs_exec,
+    'put_file'      => $rs_exec,
+    'delete'        => $rs_exec,
+    'drop'          => $rs_exec,
 
-    'query'              => $up_exec,
-    'mkblock'            => $up_exec,
-    'blockput'           => $up_exec,
-    'resumable_blockput' => $up_exec,
-    'mkfile'             => $up_exec,
+    'query'         => $up_exec,
+    'mkblock'       => $up_exec,
+    'blockput'      => $up_exec,
 
-    'wmget'              => $eu_exec,
-    'wmset'              => $eu_exec,
+    'wmget'         => $eu_exec,
+    'wmset'         => $eu_exec,
 
-    'app_info'           => $uc_exec,
-    'new_access'         => $uc_exec,
-    'delete_access'      => $uc_exec,
+    'app_info'      => $uc_exec,
+    'new_access'    => $uc_exec,
+    'delete_access' => $uc_exec,
 );
 
 # make aliases
 $methods{pub}   = $methods{publish};
 $methods{unpub} = $methods{unpublish};
 $methods{puta}  = $methods{put_auth};
-$methods{putaf} = sub { return &put_auth_file; };
 $methods{putf}  = $methods{put_file};
-$methods{rput}  = sub { return &resumable_put; };
 $methods{del}   = $methods{delete};
 $methods{appi}  = $methods{app_info};
 $methods{nacs}  = $methods{new_access};
