@@ -282,8 +282,8 @@ sub format_result {
 } # format_result
 
 my $slave_callback = sub {
-    my $proc   = shift;
-    my $params = shift;
+    my $proc    = shift;
+    my $uservar = shift;
 
     my $callback_ln = readline($proc->{mgr_read});
     chomp($callback_ln);
@@ -294,8 +294,13 @@ my $slave_callback = sub {
     my ($args, $opts) = split_args($callback_ln, []);
     $args = args_to_hash($args);
 
+    if ($uservar->{callback}) {
+        my $ret = $uservar->{callback}->($args, $opts);
+        return undef unless $ret; # no longer busy
+    }
+
     my $output = format_result(
-        $params->{cmd_idx},
+        $uservar->{cmd_idx},
         $proc->{job},
         $args->{code},
         $args->{message},
@@ -313,9 +318,13 @@ sub run_in_slave {
     my $engine  = shift;
     my $cmd_idx = shift;
     my $cmd_ln  = shift;
+    my $uservar = shift || {};
     my $opts    = shift || {};
 
-    my $proc = $slave_mgr->start($slave_callback, { 'cmd_idx' => $cmd_idx });
+    $uservar->{cmd_idx}  = $cmd_idx;
+    $uservar->{callback} = $opts->{_callback};
+
+    my $proc = $slave_mgr->start($slave_callback, $uservar);
     if ($proc->{child}) {
         $cmd_count = 0;
 
@@ -334,7 +343,104 @@ sub run_in_slave {
     $proc->{mgr_write}->autoflush(1);
     $cmd_ln =~ s/\s*[&](?:\d*)\s*$//;
     print {$proc->{mgr_write}} "$cmd_ln\n";
+
+    return {}, { 'code' => 200, 'message' => 'Slave task dispatched' };
 } # run_in_slave
+
+my %wrapped_cmd = (
+    'resumable_put_parallel' => sub {
+        my $engine = shift;
+        my $args   = shift;
+        my $opts   = shift;
+
+        my $fsize = (stat($args->{file} || $args->{src}))[7];
+        my $prog  = $up_read_progress->($args) || QBox::UP::new_progress($fsize);
+        my ($ret, $err) = ();
+
+        for (my $i = 0; $i < $prog->{blk_count}; ++$i) {
+            my $cmd_args = [
+                "resumable_blockput",
+                "src=" . ($args->{file} || $args->{src}),
+                "blk_index=" . $i,
+            ];
+            my $j = $i;
+            my $cmd_opts = {
+                '_callback' => sub {
+                    my $args = shift;
+                    $prog->{progs}[$j]{ctx}     = $args->{ret}{ctx};
+                    $prog->{progs}[$j]{code}    = $args->{code};
+                    $prog->{progs}[$j]{message} = $args->{message};
+                    return 1;
+                },
+                '_slave' => 1,
+            };
+            my $cmd_ln = join(q{ }, @$cmd_args);
+
+            ($ret, $err) = exec_cmd($engine, $cmd_ln, $cmd_args, $cmd_opts);
+        } # for
+
+        while (1) {
+            $slave_mgr->check_done();
+            last if (not $slave_mgr->is_busy());
+            sleep(1);
+        } # while
+
+        if ($err->{code} != 200) {
+            return $ret, $err;
+        }
+
+        my $err_count = 0;
+
+        for (my $i = 0; $i < $prog->{blk_count}; ++$i) {
+            if ($prog->{progs}[$i]{code} != 200) {
+                $err_count += 1;
+            }
+        } # for
+
+        if ($err_count > 0) {
+            return undef, { 'code' => 499, 'message' => "$err_count block failed to put." };
+        }
+
+        {
+            my $cmd_args = ["mkfile", "fsize=$fsize"];
+
+            my $bkt = $args->{bucket} || $args->{bkt};
+            if ($bkt) {
+                push @$cmd_args, "bucket=$bkt";
+            }
+
+            if ($args->{key}) {
+                push @$cmd_args, "key=$args->{key}";
+            }
+            if ($args->{mime_type}) {
+                push @$cmd_args, "mime_type=$args->{mime_type}";
+            }
+            if ($args->{params}) {
+                push @$cmd_args, "params=$args->{params}";
+            }
+            if ($args->{callback_params}) {
+                push @$cmd_args, "callback_params=$args->{callback_params}";
+            }
+
+            my $ctx_arr = [ map { $_->{ctx} } @{$prog->{progs}} ];
+            push @$cmd_args, "ctx=" . to_json($ctx_arr);
+
+            my $cmd_opts = { '_no_output' => 1 };
+            my $cmd_ln = join(q{ }, @$cmd_args);
+
+            return exec_cmd($engine, $cmd_ln, $cmd_args, $cmd_opts);
+        }
+    },
+);
+
+$wrapped_cmd{rputl} = $wrapped_cmd{resumable_put_parallel};
+
+sub exec_cmd_internal {
+    my $engine = shift;
+    my $cmd_ln = shift;
+    my ($args, $opts, $remain) = parse_cmd($cmd_ln, {});
+    exec_cmd($engine, $cmd_ln, $args, $opts);
+} # exec_cmd_internal
 
 sub exec_cmd {
     my $engine = shift;
@@ -359,7 +465,7 @@ sub exec_cmd {
 
     if (defined($opts->{_slave})) {
         delete $opts->{_slave};
-        return run_in_slave($engine, $cmd_count, $cmd_ln, $opts);
+        return run_in_slave($engine, $cmd_count, $cmd_ln, undef, $opts);
     }
 
     if ($cmd eq 'rput' or $cmd eq 'resumable_put') {
@@ -381,12 +487,21 @@ sub exec_cmd {
 
     qbox_hash_merge($opts->{headers} = {}, $args->{_headers}, 'FROM');
 
-    my ($ret, $err) = $engine->$cmd($args, $opts);
+    my ($ret, $err) = ();
+    
+    if ($wrapped_cmd{$cmd}) {
+        ($ret, $err) = $wrapped_cmd{$cmd}->($engine, $args, $opts);
+    }
+    else {
+        ($ret, $err) = $engine->$cmd($args, $opts);
+    }
 
-    my $output = format_result($cmd_count, undef, $err->{code}, $err->{message}, $ret);
-    print $output, "\n";
-    if ($pretty) {
-        print "\n";
+    if (not defined($opts->{_no_output})) {
+        my $output = format_result($cmd_count, undef, $err->{code}, $err->{message}, $ret);
+        print $output, "\n";
+        if ($pretty) {
+            print "\n";
+        }
     }
 
     return $ret, $err;
@@ -398,11 +513,9 @@ sub oneshot {
     my $args   = shift;
     my $opts   = shift;
 
-    my $cmd = 'auth_by_password';
-    my ($ret, $err) = exec_cmd($engine, $cmd, [$cmd]);
+    my ($ret, $err) = exec_cmd_internal($engine, 'auth_by_password');
     if (not defined($ret)) {
-        $cmd = 'auth_by_access_key';
-        ($ret, $err) = exec_cmd($engine, $cmd, [$cmd]);
+        ($ret, $err) = exec_cmd_internal($engine, 'auth_by_access_key');
     }
     exec_cmd($engine, $cmd_ln, $args);
 } # oneshot
