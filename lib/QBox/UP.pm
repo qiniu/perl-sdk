@@ -197,7 +197,7 @@ my $qbox_up_try_put = sub {
     my $err = {};
     my $keep_going = 1;
     my $body_len = ($blk_prog->{rest_size} > $chk_size) ? $chk_size : $blk_prog->{rest_size};
-    $body->{offset} = ($blk_index * $blk_size) + $blk_prog->{offset};
+    $body->{offset} = ($blk_index * QBox::Config::QBOX_UP_BLOCK_SIZE) + $blk_prog->{offset};
 
     for (my $i = 0; $i <= $retry_times; ++$i) {
         ($ret, $err) = $action->($body, $body_len);
@@ -242,7 +242,7 @@ sub resumable_blockput {
     my $ret = undef;
     my $err = undef;
 
-    if ($blk_prog->{rest_size} == $blk_size) {
+    if ($blk_prog->{offset} == 0) {
         ($ret, $err, $keep_going) = $qbox_up_try_put->(
             $self,
             sub { return mkblock($self, $blk_size, @_); },
