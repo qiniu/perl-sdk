@@ -123,6 +123,7 @@ sub new_progress {
         $prog->{progs}[$i]{offset}    = 0;
         $prog->{progs}[$i]{err_code}  = 0;
         $prog->{progs}[$i]{rest_size} = ($rest > QBOX_UP_BLOCK_SIZE) ? QBOX_UP_BLOCK_SIZE : $rest;
+        $prog->{progs}[$i]{blk_size}  = $prog->{progs}[$i]{rest_size};
 
         $rest -= $prog->{progs}[$i]{rest_size};
     } # for
