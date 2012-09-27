@@ -116,31 +116,36 @@ sub start {
         return $proc;
     }
 
-    foreach my $proc (values(@{$self->{procs}})) {
-        next if ($proc->{busy});
-        $proc->{callback} = $callback;
-        $proc->{params}   = $params;
-        $proc->{busy}     = 1;
+    while (1) {
+        foreach my $proc (values(%{$self->{procs}})) {
+            next if ($proc->{busy});
+            $proc->{callback} = $callback;
+            $proc->{params}   = $params;
+            $proc->{busy}     = 1;
 
-        $self->{busy} += 1;
+            $self->{busy} += 1;
 
-        return $proc;
-    } # foreach
+            return $proc;
+        } # foreach
+
+        $self->check_done();
+    } # while
 
     return undef;
 } # start
 
 sub check_done {
-    my $self = shift;
-    my $rfds = $self->{rfds};
+    my $self  = shift;
+    my $sleep = shift;
 
+    my $rfds = $self->{rfds};
     return if ($rfds eq q{});
 
-    my $nfound = select($rfds, undef, undef, 0);
+    my $nfound = select($rfds, undef, undef, $sleep);
     return if ($nfound == 0);
 
     foreach my $proc (values(%{$self->{procs}})) {
-        my $ready = vec($self->{rfds}, fileno($proc->{mgr_read}), 1);
+        my $ready = vec($rfds, fileno($proc->{mgr_read}), 1);
         if ($ready == 1) {
             my $callback = $proc->{callback};
             my $params   = $proc->{params};

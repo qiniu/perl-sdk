@@ -379,11 +379,7 @@ my %wrapped_cmd = (
             ($ret, $err) = exec_cmd($engine, $cmd_ln, $cmd_args, $cmd_opts);
         } # for
 
-        while (1) {
-            $slave_mgr->check_done();
-            last if (not $slave_mgr->is_busy());
-            sleep(1);
-        } # while
+        $slave_mgr->check_done() while ($slave_mgr->is_busy());
 
         if ($err->{code} != 200) {
             return $ret, $err;
@@ -622,13 +618,12 @@ sub exec_file {
     my $opts   = undef;
     my $remain = q{};
     while (1) {
-        $slave_mgr->check_done();
+        $slave_mgr->check_done(0);
 
         my $cmd_ln = <$fh>;
 
         if (not defined($cmd_ln)) {
             if ($slave_mgr->is_busy()){
-                sleep(1);
                 next;
             }
             last;
