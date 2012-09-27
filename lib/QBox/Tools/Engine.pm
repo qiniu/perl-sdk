@@ -140,52 +140,78 @@ sub put_auth_file {
 } # put_auth_file
 
 ### up methods
-sub resumable_put {
-    my $self   = shift;
-    my $args   = shift;
-    my $opts   = shift || {};
+my $prepare_for_resumable_put = sub {
+    my $self = shift;
+    my $args = shift;
+    my $opts = shift;
 
     my ($new_args, $new_opts) = $prepare_args->($self, $args, $opts);
 
     my $notify  = $new_args->{notify} || {};
     my $rs_args = $rs_pickup_args->($new_args);
 
-    my $fsize     = (stat($rs_args->{file}))[7];
-    my $reader_at = QBox::ReaderAt::File->new($rs_args->{file});
+    $new_args->{fsize}     = (stat($rs_args->{file}))[7];
+    $new_args->{reader_at} = QBox::ReaderAt::File->new($rs_args->{file});
 
     $notify->{engine} = $self;
 
-    my ($ret, $err, $prog) = ();
     if (defined($notify->{read_prog})) {
-        $prog = $notify->{read_prog}->($notify);
+        $new_args->{prog} = $notify->{read_prog}->($notify);
+    }
+    else {
+        $new_args->{prog} = undef;
     }
 
+    return $new_args, $new_opts, $rs_args;
+};
+
+my $cleanup_for_resumable_put = sub {
+    my $self = shift;
+    my $args = shift;
+    my $err  = shift;
+
+    my $notify = $args->{notify} || {};
+
+    if ($err->{code} != 200) {
+        if (defined($notify->{write_prog})) {
+            $notify->{write_prog}->($notify, $args->{prog});
+        }
+    }
+    else {
+        if (defined($notify->{end_prog})) {
+            $notify->{end_prog}->($notify, $args->{prog});
+        }
+    }
+};
+
+sub resumable_put {
+    my $self = shift;
+    my $cmd  = shift;
+    my $args = shift;
+    my $opts = shift || {};
+
+    my ($new_args, $new_opts, $rs_args) = $prepare_for_resumable_put->($self, $args, $opts);
+
+    my $ret = undef;
+    my $err = undef;
+    my $entry = qbox_make_entry($rs_args->{bucket}, $rs_args->{key}),
+
     $get_svc->($self, 'rs');
-    ($ret, $err, $prog) = $self->{svc}{rs}->resumable_put(
-        $prog,
-        $notify->{blk_notify},
-        $notify->{chk_notify},
-        $notify,
-        qbox_make_entry($rs_args->{bucket}, $rs_args->{key}),
+    ($ret, $err, $new_args->{prog}) = $self->{svc}{rs}->resumable_put(
+        $new_args->{prog},
+        $new_args->{notify}->{blk_notify},
+        $new_args->{notify}->{chk_notify},
+        $new_args->{notify},
+        $entry,
         $rs_args->{mime_type},
-        $reader_at,
-        $fsize,
+        $new_args->{reader_at},
+        $new_args->{fsize},
         $rs_args->{custom_meta},
         $rs_args->{params},
         $rs_args->{callback_params},
     );
 
-    if ($err->{code} != 200) {
-        if (defined($notify->{write_prog})) {
-            $notify->{write_prog}->($notify, $prog);
-        }
-    }
-    else {
-        if (defined($notify->{end_prog})) {
-            $notify->{end_prog}->($notify, $prog);
-        }
-    }
-
+    $cleanup_for_resumable_put->($self, $new_args, $err);
     return $ret, $err;
 } # resumable_put
 
@@ -207,6 +233,7 @@ my $eu_gen_settings = sub {
 
 sub wmmod {
     my $self = shift;
+    my $cmd  = shift;
     my $args = shift;
     my $opts = shift;
 
