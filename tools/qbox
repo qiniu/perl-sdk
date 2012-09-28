@@ -176,7 +176,7 @@ my $up_chk_notify = sub {
 my $slave_mgr = undef;
 my $cmd_count = 0;
 
-my $feedback_timestamp = undef;
+my $timing = undef;
 
 my $debug   = undef;
 my $verbose = 0;
@@ -228,8 +228,8 @@ sub get_opts {
             next;
         }
 
-        if ($arg =~ m/^(?:--timestamp|-T)/) {
-            $feedback_timestamp = 1;
+        if ($arg =~ m/^(?:--timing|-T)/) {
+            $timing = 1;
             next;
         }
 
@@ -259,11 +259,9 @@ sub format_result {
 
     my @fields = ();
 
-    if ($feedback_timestamp) {
-        my ($sec, $min, $hour, $day, $mon, $year) = localtime(time);
-        my $ts = sprintf("%04d-%02d-%02d %02d:%02d:%02d", $year + 1900, $mon + 1, $day, $hour, $min, $sec);
-        push @fields, $ts;
-    }
+    my ($sec, $min, $hour, $day, $mon, $year) = localtime(time);
+    my $ts = sprintf("%04d-%02d-%02d %02d:%02d:%02d", $year + 1900, $mon + 1, $day, $hour, $min, $sec);
+    push @fields, $ts;
 
     push @fields, "#${cmd_idx}";
 
@@ -332,7 +330,7 @@ sub run_in_slave {
         $debug   = undef;
         $pretty  = undef;
 
-        $feedback_timestamp = undef;
+        $timing = undef;
 
         $proc->{work_write}->autoflush(1);
         $proc->{work_err}->autoflush(1);
