@@ -176,12 +176,42 @@ my $up_chk_notify = sub {
 my $slave_mgr = undef;
 my $cmd_count = 0;
 
-my $timing = undef;
-
 my $debug   = undef;
 my $verbose = 0;
 my $pretty  = undef;
 my $prompt  = undef;
+
+my $get_tv   = undef;
+my $delta_tv = undef;
+
+eval "require Time::HiRes;";
+
+if ($EVAL_ERROR) {
+    $get_tv = sub {
+        return time();
+    };
+
+    $delta_tv = sub {
+        my $tv_lhs = shift;
+        my $tv_rhs = shift;
+        return ($tv_lhs - $tv_rhs) * 1000;
+    };
+}
+else {
+    $get_tv = sub {
+        my $tv = {};
+        ($tv->{sec}, $tv->{usec}) = Time::HiRes::gettimeofday();
+        return $tv;
+    };
+
+    $delta_tv = sub {
+        my $tv_lhs = shift;
+        my $tv_rhs = shift;
+        my $delta = ($tv_lhs->{sec} - $tv_rhs->{sec}) * 1000
+                  + ($tv_lhs->{usec} - $tv_rhs->{usec}) / 1000;
+        return $delta;
+    };
+};
 
 sub fmt_json {
     my $obj = shift;
@@ -228,11 +258,6 @@ sub get_opts {
             next;
         }
 
-        if ($arg =~ m/^(?:--timing|-T)/) {
-            $timing = 1;
-            next;
-        }
-
         if ($arg =~ m/^(?:--help|-h)/) {
             my $prog_nm = basename($0);
             print "Usage: ${prog_nm} [OPTION] CMD [PARAM=ARG [PARAM=ARG [...]]]\n";
@@ -253,6 +278,7 @@ sub get_opts {
 sub format_result {
     my $cmd_idx = shift;
     my $job_idx = shift;
+    my $delta   = shift;
     my $code    = shift;
     my $message = shift;
     my $result  = shift || {};
@@ -269,6 +295,7 @@ sub format_result {
         push @fields, "&${job_idx}";
     }
 
+    push @fields, "time=${delta}ms";
     push @fields, "code=${code}";
 
     $message =~ s/(?!\\)[']/\\'/g;
@@ -297,9 +324,13 @@ my $slave_callback = sub {
         return undef unless $ret; # no longer busy
     }
 
+    $uservar->{end_tv} = $get_tv->();
+    my $delta = $delta_tv->($uservar->{end_tv}, $uservar->{begin_tv});
+
     my $output = format_result(
         $uservar->{cmd_idx},
         $proc->{job},
+        $delta,
         $args->{code},
         $args->{message},
         $args->{ret},
@@ -321,6 +352,7 @@ sub run_in_slave {
 
     $uservar->{cmd_idx}  = $cmd_idx;
     $uservar->{callback} = $opts->{_callback};
+    $uservar->{begin_tv} = $opts->{_begin_tv};
 
     my $proc = $slave_mgr->start($slave_callback, $uservar);
     if ($proc->{child}) {
@@ -329,8 +361,6 @@ sub run_in_slave {
         $verbose = 0;
         $debug   = undef;
         $pretty  = undef;
-
-        $timing = undef;
 
         $proc->{work_write}->autoflush(1);
         $proc->{work_err}->autoflush(1);
@@ -457,6 +487,8 @@ sub exec_cmd {
 
     $args = args_to_hash($args);
 
+    $opts->{_begin_tv} = $get_tv->();
+
     if (defined($opts->{_slave})) {
         delete $opts->{_slave};
         return run_in_slave($engine, $cmd_count, $cmd_ln, undef, $opts);
@@ -491,7 +523,10 @@ sub exec_cmd {
     }
 
     if (not defined($opts->{_no_output})) {
-        my $output = format_result($cmd_count, undef, $err->{code}, $err->{message}, $ret);
+        $opts->{_end_tv} = $get_tv->();
+        my $delta = $delta_tv->($opts->{_end_tv}, $opts->{_begin_tv});
+
+        my $output = format_result($cmd_count, undef, $delta, $err->{code}, $err->{message}, $ret);
         print $output, "\n";
         if ($pretty) {
             print "\n";
