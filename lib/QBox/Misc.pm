@@ -98,7 +98,7 @@ sub qbox_extract_args {
         $_[0]->{opts} = $_[1];
         return map { $_[0]->{$_} } @$arg_list;
     }
-    return splice @_, 0, scalar(@$arg_list);
+    return splice @_, 0, scalar(@$arg_list) + 1;
 } # qbox_extract_args
 
 sub qbox_json_load {

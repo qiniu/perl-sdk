@@ -182,16 +182,11 @@ my $read_part = sub {
 };
 
 my $qbox_up_try_put = sub {
-    my $self          = shift;
-    my $action        = shift;
-    my $body          = shift;
-    my $blk_index     = shift;
-    my $blk_size      = shift;
-    my $chk_size      = shift;
-    my $retry_times   = shift;
-    my $blk_prog      = shift;
-    my $chk_notify    = shift;
-    my $notify_params = shift;
+    my $self = shift;
+    my ($action, $body, $blk_index, $blk_size, $chk_size,
+        $retry_times, $blk_prog, $chk_notify, $notify_params, $opts) =
+        qbox_extract_args([qw{action body blk_index blk_size chk_size
+                              retry_times blk_prog chk_notify notify_params}], @_);
 
     my $ret = undef;
     my $err = {};
@@ -200,7 +195,7 @@ my $qbox_up_try_put = sub {
     $body->{offset} = ($blk_index * QBox::Config::QBOX_UP_BLOCK_SIZE) + $blk_prog->{offset};
 
     for (my $i = 0; $i <= $retry_times; ++$i) {
-        ($ret, $err) = $action->($body, $body_len);
+        ($ret, $err) = $action->($body, $body_len, $opts);
 
         if ($err->{code} == 200) {
             $blk_prog->{ctx}        = $ret->{ctx};

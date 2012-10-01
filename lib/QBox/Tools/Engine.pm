@@ -278,6 +278,7 @@ sub resumable_put {
         $rs_args->{custom_meta},
         $rs_args->{params},
         $rs_args->{callback_params},
+        $new_opts,
     );
 
     $cleanup_for_resumable_put->($self, $new_args, $err);
