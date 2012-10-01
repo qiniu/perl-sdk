@@ -90,7 +90,7 @@ sub call {
     my $opts         = shift;
 
     my $headers = $qbox_client_gen_headers->($self, $url);
-    $headers = qbox_curl_merge_headers($headers, $opts->{headers});
+    $headers = qbox_curl_merge_headers($headers, $opts->{_headers});
 
     my $curl = qbox_curl_call_pre($url, $headers, $opts);
     return qbox_curl_call_core($curl, $opts);
@@ -114,7 +114,7 @@ sub call_with_binary {
             "Content-Type"   => "application/octet-stream",
             "Content-Length" => "${body_len}",
         },
-        $opts->{headers}
+        $opts->{_headers}
     );
 
     my $curl = qbox_curl_call_pre($url, $headers, $opts);
@@ -145,7 +145,7 @@ sub call_with_buffer {
             "Content-Type"   => "application/octet-stream",
             "Content-Length" => "${body_len}",
         },
-        $opts->{headers}
+        $opts->{_headers}
     );
 
     my $curl = qbox_curl_call_pre($url, $headers, $opts);
@@ -169,7 +169,7 @@ sub call_with_form {
     }
 
     my $headers = $qbox_client_gen_headers->($self, $url);
-    $headers = qbox_curl_merge_headers($headers, $opts->{headers});
+    $headers = qbox_curl_merge_headers($headers, $opts->{_headers});
 
     my $curl = qbox_curl_call_pre($url, $headers, $opts);
 
@@ -191,7 +191,7 @@ sub call_with_multipart_form {
     }
 
     my $headers = $qbox_client_gen_headers->($self, $url);
-    $headers = qbox_curl_merge_headers($headers, $opts->{headers});
+    $headers = qbox_curl_merge_headers($headers, $opts->{_headers});
 
     my $curl = qbox_curl_call_pre($url, $headers, $opts);
 

@@ -39,7 +39,7 @@ sub app_info {
     my ($app, $opts) = qbox_extract_args([qw{app}], @_);
 
     $opts ||= {};
-    $opts->{api} = API_APP_INFO;
+    $opts->{_api} = API_APP_INFO;
     my $query = { app => $app };
     my $url = "$self->{hosts}{uc_host}/appInfo";
     return $self->{client}->call_with_form(
@@ -55,7 +55,7 @@ sub new_access {
     my ($app, $opts) = qbox_extract_args([qw{app}], @_);
 
     $opts ||= {};
-    $opts->{api} = API_NEW_ACCESS;
+    $opts->{_api} = API_NEW_ACCESS;
     my $query = { app => $app };
     my $url = "$self->{hosts}{uc_host}/newAccess";
     return $self->{client}->call_with_form(
@@ -71,7 +71,7 @@ sub delete_access {
     my ($app, $acs_key, $opts) = qbox_extract_args([qw{app access_key}], @_);
 
     $opts ||= {};
-    $opts->{api} = API_DELETE_ACCESS;
+    $opts->{_api} = API_DELETE_ACCESS;
     my $query = { app => $app, key => $acs_key };
     my $url = "$self->{hosts}{uc_host}/deleteAccess";
     return $self->{client}->call_with_form(

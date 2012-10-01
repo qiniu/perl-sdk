@@ -140,7 +140,7 @@ sub get {
     }
 
     $opts ||= {};
-    $opts->{api} = API_GET;
+    $opts->{_api} = API_GET;
     my $url = join('/', @args);
     return $self->{client}->call($url, $opts);
 } # get
@@ -176,7 +176,7 @@ sub put {
     }
 
     $opts ||= {};
-    $opts->{api} = API_PUT;
+    $opts->{_api} = API_PUT;
     my $url = join('/', @args);
     return $self->{client}->call_with_binary($url, $reader, $fsize, $opts);
 } # put
@@ -224,7 +224,7 @@ sub put_auth_ex {
     }
 
     $opts ||= {};
-    $opts->{api} = API_PUT_AUTH_EX;
+    $opts->{_api} = API_PUT_AUTH_EX;
     my $url = join('/', @args);
     return $self->{client}->call($url, $opts);
 } # put_auth_ex
@@ -294,7 +294,7 @@ sub stat {
     $key    = "$key";
 
     $opts ||= {};
-    $opts->{api} = API_STAT;
+    $opts->{_api} = API_STAT;
     my $encoded_entry = qbox_base64_encode_urlsafe(qbox_make_entry($bucket, $key)); 
     my $url = "$self->{hosts}{rs_host}/stat/${encoded_entry}";
     return $self->{client}->call($url, $opts);
@@ -311,7 +311,7 @@ sub publish {
     $domain = "$domain";
 
     $opts ||= {};
-    $opts->{api} = API_PUBLISH;
+    $opts->{_api} = API_PUBLISH;
     my $encoded_domain = qbox_base64_encode_urlsafe($domain); 
     my $url = "$self->{hosts}{rs_host}/publish/${encoded_domain}/from/${bucket}";
     return $self->{client}->call($url, $opts);
@@ -326,7 +326,7 @@ sub unpublish {
     $domain = "$domain";
 
     $opts ||= {};
-    $opts->{api} = API_UNPUBLISH;
+    $opts->{_api} = API_UNPUBLISH;
     my $encoded_domain = qbox_base64_encode_urlsafe($domain); 
     my $url = "$self->{hosts}{rs_host}/unpublish/${encoded_domain}";
     return $self->{client}->call($url, $opts);
@@ -343,7 +343,7 @@ sub delete {
     $key    = "$key";
 
     $opts ||= {};
-    $opts->{api} = API_DELETE;
+    $opts->{_api} = API_DELETE;
     my $encoded_entry = qbox_base64_encode_urlsafe(qbox_make_entry($bucket, $key)); 
     my $url = "$self->{hosts}{rs_host}/delete/${encoded_entry}";
     return $self->{client}->call($url, $opts);
@@ -358,7 +358,7 @@ sub drop {
     $bucket = "$bucket";
 
     $opts ||= {};
-    $opts->{api} = API_DROP;
+    $opts->{_api} = API_DROP;
     my $url = "$self->{hosts}{rs_host}/drop/${bucket}";
     return $self->{client}->call($url, $opts);
 } # drop

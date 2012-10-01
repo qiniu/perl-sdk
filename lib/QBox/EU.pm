@@ -28,7 +28,7 @@ my $qbox_eu_wmget = sub {
     my $query    = shift || {};
     my $opts     = shift || {}; 
 
-    $opts->{api} ||= $api;
+    $opts->{_api} ||= $api;
 
     if (defined($customer) and "$customer" ne q{}) {
         $query->{customer} = "$customer";
@@ -101,7 +101,7 @@ sub wmset {
     } # foreach
 
     $opts ||= {};
-    $opts->{api} = API_WMSET;
+    $opts->{_api} = API_WMSET;
     my $url = "$self->{hosts}{eu_host}/wmset";
     return $self->{client}->call_with_multipart_form(
         $url,
@@ -115,7 +115,7 @@ sub wmget {
     my $self = shift;
     my ($customer, $query, $opts) = qbox_extract_args([qw{customer query}], @_);
     $opts ||= {};
-    $opts->{api} = API_WMGET;
+    $opts->{_api} = API_WMGET;
     return $self->$qbox_eu_wmget('wmget', $customer, $query, $opts);
 } # wmget
 
@@ -128,7 +128,7 @@ sub admin_wmget {
     }
 
     $opts ||= {};
-    $opts->{api} = API_ADMIN_WMGET;
+    $opts->{_api} = API_ADMIN_WMGET;
     my $query = { id => $id };
     return $self->$qbox_eu_wmget('admin/wmget', $customer, $query, $opts);
 } # admin_wmget

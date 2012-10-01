@@ -52,11 +52,11 @@ sub qbox_curl_call_pre {
 
     my $curl = Net::Curl::Easy->new();
 
-    if (ref($opts->{headers}) eq 'HASH') {
-        qbox_hash_merge($headers, $opts->{headers}, 'FROM');
+    if (ref($opts->{_headers}) eq 'HASH') {
+        qbox_hash_merge($headers, $opts->{_headers}, 'FROM');
     }
 
-    my $api = $opts->{api} || 'unknown_api';
+    my $api = $opts->{_api} || 'unknown_api';
     QBox::Stub::call_stub("${api}.url", \$url);
     QBox::Stub::call_stub("${api}.headers", \$headers);
 
@@ -98,7 +98,7 @@ sub qbox_curl_call_core {
     my $ret = undef;
     my $err = {};
 
-    if ($opts->{as_verbatim}) {
+    if ($opts->{_as_verbatim}) {
         $ret = $resp;
     }
     else {
@@ -117,7 +117,7 @@ sub qbox_curl_call_core {
         $err->{message} = 'OK';
     }
     else {
-        $err->{message} = ($opts->{simple_error}) ? $opts->{simple_error} : 
+        $err->{message} = ($opts->{_simple_error}) ? $opts->{_simple_error} : 
                           ($ret && $ret->{error}) ? $ret->{error}         :
                                                     $curl->error()        ;
     }

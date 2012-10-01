@@ -151,7 +151,7 @@ sub mkblock {
         qbox_extract_args([qw{blk_size body body_len}], @_);
 
     $opts ||= {};
-    $opts->{api} = API_MKBLOCK;
+    $opts->{_api} = API_MKBLOCK;
     my $url = "$self->{hosts}{up_host}/mkblk/${blk_size}";
     return $qbox_up_chunk_put->($self, $body, $body_len, $url, $opts);
 } # mkblock
@@ -162,7 +162,7 @@ sub blockput {
         qbox_extract_args([qw{ctx offset body body_len}], @_);
 
     $opts ||= {};
-    $opts->{api} = API_BLOCKPUT;
+    $opts->{_api} = API_BLOCKPUT;
     my $url = "$self->{hosts}{up_host}/bput/${ctx}/${offset}";
     return $qbox_up_chunk_put->($self, $body, $body_len, $url, $opts);
 } # blockput
@@ -297,7 +297,7 @@ sub mkfile_by_sha1 {
     }
 
     $opts ||= {};
-    $opts->{api} = API_MKFILE;
+    $opts->{_api} = API_MKFILE;
     my $url = join('/', @args);
     my ($cksum_buff, $cksum_size) = reform_checksums($checksums);
     return $self->{client}->call_with_buffer($url, $cksum_buff, $cksum_size, $opts);
@@ -326,8 +326,8 @@ sub mkfile {
     }
 
     $opts ||= {};
-    $opts->{api} = API_MKFILE;
-    $opts->{headers}{'Content-Type'} = 'text/plain';
+    $opts->{_api} = API_MKFILE;
+    $opts->{_headers}{'Content-Type'} = 'text/plain';
     my $url = join('/', @args);
     my $ctx_buff = join ",", map { $_->{ctx} } @{$prog->{progs}};
     my $ctx_size = length($ctx_buff);
@@ -386,8 +386,8 @@ sub query {
     my ($checksums, $opts) = qbox_extract_args([qw{checksums}], @_);
 
     $opts ||= {};
-    $opts->{api}         = API_QUERY;
-    $opts->{as_verbatim} = 1;
+    $opts->{_api}         = API_QUERY;
+    $opts->{_as_verbatim} = 1;
     my $url = "$self->{hosts}{up_host}/query";
     my ($cksum_buff, $cksum_size) = reform_checksums($checksums, q{grep valid});
     return $self->{client}->call_with_buffer($url, $cksum_buff, $cksum_size, $opts);

@@ -317,7 +317,7 @@ my $slave_callback = sub {
     trim_ln($callback_ln);
 
     my ($args, $opts) = split_args($callback_ln, []);
-    $args = args_to_hash($args);
+    $args = list_to_hash($args);
 
     if ($uservar->{callback}) {
         my $ret = $uservar->{callback}->($args, $opts);
@@ -466,6 +466,7 @@ sub exec_cmd_internal {
     exec_cmd($engine, $cmd_ln, $args, $opts);
 } # exec_cmd_internal
 
+my $opt_re = qr/^[_]/;
 sub exec_cmd {
     my $engine = shift;
     my $cmd_ln = shift;
@@ -485,7 +486,8 @@ sub exec_cmd {
         }
     }
 
-    $args = args_to_hash($args);
+    my $cmd_args = list_to_hash($args);
+    my $cmd_opts = list_to_hash($args, $opt_re);
 
     $opts->{_begin_tv} = $get_tv->();
 
@@ -496,35 +498,35 @@ sub exec_cmd {
 
     if ($cmd eq 'rput' or $cmd eq 'resumable_put') {
         my $notify = {
-            'stop_blk'   => $args->{stop_blk},
-            'stop_chk'   => $args->{stop_chk},
-            'prog_fl'    => $args->{prog_fl},
-            'notify_blk' => (defined($args->{stop_blk})) ? $up_blk_notify : $up_blk_abort,
-            'notify_chk' => (defined($args->{stop_chk})) ? $up_chk_notify : $up_chk_abort,
+            'stop_blk'   => $cmd_opts->{_stop_blk},
+            'stop_chk'   => $cmd_opts->{_stop_chk},
+            'prog_fl'    => $cmd_opts->{_prog_fl},
+            'notify_blk' => (defined($cmd_opts->{_stop_blk})) ? $up_blk_notify : $up_blk_abort,
+            'notify_chk' => (defined($cmd_opts->{_stop_chk})) ? $up_chk_notify : $up_chk_abort,
             'out_fh'     => \*STDERR,
         };
 
-        if (defined($notify->{stop_chk})) {
-            $notify->{stop_blk} ||= 0;
+        if (defined($notify->{_stop_chk})) {
+            $notify->{_stop_blk} ||= 0;
         }
 
-        $args->{notify} = $notify;
+        $cmd_opts->{_notify} = $notify;
     }
 
-    qbox_hash_merge($opts->{headers} = {}, $args->{_headers}, 'FROM');
+    my $final_opts = qbox_hash_merge({}, $opts, 'FROM');
+    $final_opts = qbox_hash_merge($final_opts, $cmd_opts, 'FROM');
 
     my ($ret, $err) = ();
-    
     if ($wrapped_cmd{$cmd}) {
-        ($ret, $err) = $wrapped_cmd{$cmd}->($engine, $args, $opts);
+        ($ret, $err) = $wrapped_cmd{$cmd}->($engine, $cmd_args, $final_opts);
     }
     else {
-        ($ret, $err) = $engine->$cmd($args, $opts);
+        ($ret, $err) = $engine->$cmd($cmd_args, $final_opts);
     }
 
-    if (not defined($opts->{_no_output})) {
-        $opts->{_end_tv} = $get_tv->();
-        my $delta = $delta_tv->($opts->{_end_tv}, $opts->{_begin_tv});
+    if (not defined($final_opts->{_no_output})) {
+        $final_opts->{_end_tv} = $get_tv->();
+        my $delta = $delta_tv->($final_opts->{_end_tv}, $final_opts->{_begin_tv});
 
         my $output = format_result($cmd_count, undef, $delta, $err->{code}, $err->{message}, $ret);
         print $output, "\n";
@@ -594,10 +596,12 @@ sub split_args {
     return $args, $opts, q{};
 } # split_args
 
-sub args_to_hash {
-    my $args = shift;
-    my $new_args = { map { split('=', $_, 2) } @$args };
-    foreach my $value (values(%$new_args)) {
+my $arg_re = qr/^[^_]/;
+sub list_to_hash {
+    my $list = shift;
+    my $re   = shift || $arg_re;
+    my $hash = { map { split('=', $_, 2) } grep { $_ =~ $re } @$list };
+    foreach my $value (values(%$hash)) {
         eval { $value = from_json($value); };
 
         if ($EVAL_ERROR) {
@@ -614,8 +618,8 @@ sub args_to_hash {
             }
         }
     } # foreach
-    return $new_args;
-} # args_to_hash
+    return $hash;
+} # list_to_hash
 
 sub parse_cmd {
     my $cmd_ln = shift;

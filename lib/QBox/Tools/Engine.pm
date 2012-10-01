@@ -68,14 +68,14 @@ my $prepare_args = sub {
     }
 
     my $new_opts = {
-        headers => {},
+        _headers => {},
     };
 
     if (ref($self->{default_opts}) eq 'HASH') {
         qbox_hash_merge($new_opts, $self->{default_opts}, 'FROM');
     }
 
-    qbox_hash_merge($new_opts->{headers}, $self->{headers}, 'FROM');
+    qbox_hash_merge($new_opts->{_headers}, $self->{headers}, 'FROM');
     qbox_hash_merge($new_opts, $opts, 'FROM');
 
     return $new_args, $new_opts;
