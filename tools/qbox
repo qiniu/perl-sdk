@@ -235,7 +235,7 @@ sub get_opts {
 
         if ($arg =~ m/^(?:--command-file|-f)/) {
             $options->{cmd_files} ||= [];
-            push @{$options->{cmd_files}}, $args->[$i + 1];
+            push @{$options->{cmd_files}}, split(",", $args->[$i + 1]);
             ++$i;
             next;
         }
@@ -541,7 +541,6 @@ sub exec_cmd {
         ($ret, $err) = $wrapped_cmd{$cmd}->($engine, $cmd_args, $final_opts);
     }
     else {
-        printf STDERR "%s\n", to_json($final_opts);
         ($ret, $err) = $engine->$cmd($cmd_args, $final_opts);
     }
 
