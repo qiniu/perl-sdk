@@ -399,7 +399,7 @@ my %wrapped_cmd = (
                 "src=" . ($args->{file} || $args->{src}),
                 "blk_index=" . $i,
             ];
-            if ($opts->{_headers}) {
+            if (defined($opts->{_headers})) {
                 push @$cmd_args, sprintf("_headers=%s", to_json($opts->{_headers}));
             }
 
@@ -458,16 +458,17 @@ my %wrapped_cmd = (
                 push @$cmd_args, "callback_params=$args->{callback_params}";
             }
 
-            if ($opts->{_headers}) {
-                push @$cmd_args, sprintf("_headers=%s", to_json($opts->{_headers}));
-            }
-
             my $ctx_arr = [ map { $_->{ctx} } @{$prog->{progs}} ];
             push @$cmd_args, "ctx=" . to_json($ctx_arr);
 
-            my $cmd_opts = { '_no_output' => 1 };
-            my $cmd_ln = join(q{ }, @$cmd_args);
+            my $cmd_opts = { '_headers' => {} };
 
+            if (defined($opts->{_headers})) {
+                qbox_hash_merge($cmd_opts->{_headers}, $opts->{_headers} || {}, 'FROM');
+                push @$cmd_args, "_headers=" . to_json($opts->{_headers});
+            }
+
+            my $cmd_ln = join(q{ }, @$cmd_args);
             exec_cmd($engine, $cmd_ln, $cmd_args, $cmd_opts);
         }
 
@@ -480,7 +481,7 @@ $wrapped_cmd{rputl} = $wrapped_cmd{resumable_put_parallel};
 sub exec_cmd_internal {
     my $engine = shift;
     my $cmd_ln = shift;
-    my ($args, $opts, $remain) = parse_cmd($cmd_ln, {});
+    my ($args, $opts, $remain) = parse_cmd($cmd_ln, []);
     exec_cmd($engine, $cmd_ln, $args, $opts);
 } # exec_cmd_internal
 
@@ -540,6 +541,7 @@ sub exec_cmd {
         ($ret, $err) = $wrapped_cmd{$cmd}->($engine, $cmd_args, $final_opts);
     }
     else {
+        printf STDERR "%s\n", to_json($final_opts);
         ($ret, $err) = $engine->$cmd($cmd_args, $final_opts);
     }
 

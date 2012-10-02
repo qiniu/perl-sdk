@@ -247,6 +247,7 @@ sub mkfile {
         $new_args->{params},
         $new_args->{callback_params},
         $new_args->{prog},
+        $new_opts,
     );
 
     $cleanup_for_resumable_put->($self, $new_args, $new_opts, $err);
