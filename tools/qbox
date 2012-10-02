@@ -391,6 +391,10 @@ my %wrapped_cmd = (
                 "src=" . ($args->{file} || $args->{src}),
                 "blk_index=" . $i,
             ];
+            if ($opts->{_headers}) {
+                push @$cmd_args, sprintf("_headers=%s", to_json($opts->{_headers}));
+            }
+
             my $j = $i;
             my $cmd_opts = {
                 '_callback' => sub {
@@ -446,14 +450,20 @@ my %wrapped_cmd = (
                 push @$cmd_args, "callback_params=$args->{callback_params}";
             }
 
+            if ($opts->{_headers}) {
+                push @$cmd_args, sprintf("_headers=%s", to_json($opts->{_headers}));
+            }
+
             my $ctx_arr = [ map { $_->{ctx} } @{$prog->{progs}} ];
             push @$cmd_args, "ctx=" . to_json($ctx_arr);
 
             my $cmd_opts = { '_no_output' => 1 };
             my $cmd_ln = join(q{ }, @$cmd_args);
 
-            return exec_cmd($engine, $cmd_ln, $cmd_args, $cmd_opts);
+            exec_cmd($engine, $cmd_ln, $cmd_args, $cmd_opts);
         }
+
+        return {}, { 'code' => 200, 'message' => "File uploaded." };
     },
 );
 

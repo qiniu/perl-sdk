@@ -154,7 +154,7 @@ my $prepare_for_resumable_put = sub {
 
     $new_args->{fsize} ||= (stat($rs_args->{file}))[7];
 
-    my $notify = $new_args->{notify} || {};
+    my $notify = $new_opts->{_notify} || {};
     $notify->{engine}  = $self;
 
     if (defined($notify->{read_prog})) {
@@ -170,9 +170,10 @@ my $prepare_for_resumable_put = sub {
 my $cleanup_for_resumable_put = sub {
     my $self = shift;
     my $args = shift;
+    my $opts = shift;
     my $err  = shift;
 
-    my $notify = $args->{notify} || {};
+    my $notify = $opts->{_notify} || {};
 
     if ($err->{code} != 200) {
         if (defined($notify->{write_prog})) {
@@ -213,9 +214,12 @@ sub resumable_blockput {
         $new_args->{chk_size} || QBox::Config::QBOX_PUT_CHUNK_SIZE,
         $new_args->{retry_times} || QBox::Config::QBOX_PUT_RETRY_TIMES,
         $blk_prog,
+        $new_opts->{_notify}{chk_notify},
+        $new_opts->{_notify},
+        $new_opts,
     );
 
-    $cleanup_for_resumable_put->($self, $new_args, $err);
+    $cleanup_for_resumable_put->($self, $new_args, $new_opts, $err);
     return $ret, $err;
 } # resumable_put_blockput
 
@@ -245,7 +249,7 @@ sub mkfile {
         $new_args->{prog},
     );
 
-    $cleanup_for_resumable_put->($self, $new_args, $err);
+    $cleanup_for_resumable_put->($self, $new_args, $new_opts, $err);
     return $ret, $err;
 } # mkfile
 
@@ -268,9 +272,9 @@ sub resumable_put {
     $get_svc->($self, 'rs');
     ($ret, $err, $new_args->{prog}) = $self->{svc}{rs}->resumable_put(
         $new_args->{prog},
-        $new_args->{notify}->{blk_notify},
-        $new_args->{notify}->{chk_notify},
-        $new_args->{notify},
+        $new_opts->{_notify}->{blk_notify},
+        $new_opts->{_notify}->{chk_notify},
+        $new_opts->{_notify},
         $entry,
         $rs_args->{mime_type},
         $new_args->{reader_at},
@@ -281,7 +285,7 @@ sub resumable_put {
         $new_opts,
     );
 
-    $cleanup_for_resumable_put->($self, $new_args, $err);
+    $cleanup_for_resumable_put->($self, $new_args, $new_opts, $err);
     return $ret, $err;
 } # resumable_put
 
