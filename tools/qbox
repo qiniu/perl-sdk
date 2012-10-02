@@ -89,7 +89,7 @@ my $up_read_progress = sub {
     return $prog;
 };
 
-my $up_up_write_progress_as_plain_text = sub {
+my $up_write_progress_as_plain_text = sub {
     my $fh   = shift;
     my $prog = shift;
 
@@ -119,7 +119,7 @@ my $up_write_progress = sub {
         printf {$fh} "%s", to_json($prog, { pretty => 1 });
     }
     else {
-        $up_up_write_progress_as_plain_text->($fh, $prog);
+        $up_write_progress_as_plain_text->($fh, $prog);
     }
 
     close($fh);
@@ -175,6 +175,8 @@ my $up_chk_notify = sub {
 ### helper routines
 my $slave_mgr = undef;
 my $cmd_count = 0;
+
+my $parallel = 5;
 
 my $debug   = undef;
 my $verbose = 0;
@@ -255,6 +257,12 @@ sub get_opts {
 
         if ($arg =~ m/^(?:--pretty|-P)/) {
             $pretty = 1;
+            next;
+        }
+
+        if ($arg =~ m/^(?:--parallel)/) {
+            $parallel = ($args->[$i + 1] + 0) || 5;
+            ++$i;
             next;
         }
 
@@ -737,7 +745,7 @@ QBox::Stub::set_stub(sub {
 });
 
 eval {
-    $slave_mgr = QBox::Tools::SlaveManager->new();
+    $slave_mgr = QBox::Tools::SlaveManager->new({ 'max_count' => $parallel });
 
     my $engine = QBox::Tools::Engine->new();
 
