@@ -176,6 +176,8 @@ my $up_chk_notify = sub {
 my $slave_mgr = undef;
 my $cmd_count = 0;
 
+our $ps_level = 1;
+my $ps = '>';
 my $parallel = 5;
 
 my $debug   = undef;
@@ -263,6 +265,11 @@ sub get_opts {
         if ($arg =~ m/^(?:--parallel)/) {
             $parallel = ($args->[$i + 1] + 0) || 5;
             ++$i;
+            next;
+        }
+
+        if ($arg =~ m/^(?:--ps)/) {
+            $ps = $args->[$i + 1] || '>';
             next;
         }
 
@@ -364,6 +371,7 @@ sub run_in_slave {
 
     my $proc = $slave_mgr->start($slave_callback, $uservar);
     if ($proc->{child}) {
+        $ps_level = 1;
         $cmd_count = 0;
 
         $verbose = 0;
@@ -385,6 +393,9 @@ sub run_in_slave {
 
 my %wrapped_cmd = (
     'resumable_put_parallel' => sub {
+        our $ps_level;
+        $ps_level += 1;
+
         my $engine = shift;
         my $args   = shift;
         my $opts   = shift;
@@ -498,11 +509,13 @@ sub exec_cmd {
     my $first = shift(@$args) || q{};
     my $cmd = lc($first);
     if ($verbose > 0) {
+        my $ps_str = $ps x $ps_level;
+
         if ($verbose < 2 and $cmd eq 'set_auth') {
-            print "> $first ... #$cmd_idx\n";
+            print "$ps_str $first ... #$cmd_idx\n";
         }
         else {
-            print "> $cmd_ln #$cmd_idx\n";
+            print "$ps_str $cmd_ln #$cmd_idx\n";
         }
     }
 
