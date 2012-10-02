@@ -484,15 +484,16 @@ sub exec_cmd {
     my $opts   = shift || {};
 
     $cmd_count += 1;
+    my $cmd_idx = $cmd_count;
 
     my $first = shift(@$args) || q{};
     my $cmd = lc($first);
     if ($verbose > 0) {
         if ($verbose < 2 and $cmd eq 'set_auth') {
-            print "> $first ... #$cmd_count\n";
+            print "> $first ... #$cmd_idx\n";
         }
         else {
-            print "> $cmd_ln #$cmd_count\n";
+            print "> $cmd_ln #$cmd_idx\n";
         }
     }
 
@@ -503,7 +504,7 @@ sub exec_cmd {
 
     if (defined($opts->{_slave})) {
         delete $opts->{_slave};
-        return run_in_slave($engine, $cmd_count, $cmd_ln, undef, $opts);
+        return run_in_slave($engine, $cmd_idx, $cmd_ln, undef, $opts);
     }
 
     if ($cmd eq 'rput' or $cmd eq 'resumable_put') {
@@ -538,7 +539,7 @@ sub exec_cmd {
         $final_opts->{_end_tv} = $get_tv->();
         my $delta = $delta_tv->($final_opts->{_end_tv}, $final_opts->{_begin_tv});
 
-        my $output = format_result($cmd_count, undef, $delta, $err->{code}, $err->{message}, $ret);
+        my $output = format_result($cmd_idx, undef, $delta, $err->{code}, $err->{message}, $ret);
         print $output, "\n";
         if ($pretty) {
             print "\n";
