@@ -93,11 +93,17 @@ sub qbox_make_entry {
 
 sub qbox_extract_args {
     my $arg_list = shift;
-    if (scalar(@_) == 2 and ref($_[0]) eq 'HASH' and ref($_[1]) eq 'HASH') {
-        push @$arg_list, 'opts';
-        $_[0]->{opts} = $_[1];
-        return map { $_[0]->{$_} } @$arg_list;
+
+    if (ref($_[0]) eq 'HASH') {
+        my $arg_count = scalar(@_);
+        if ($arg_count <= 2) {
+            push @$arg_list, 'opts';
+            $_[0]->{opts} = $_[1];
+
+            return map { $_[0]->{$_} } @$arg_list;
+        }
     }
+
     return splice @_, 0, scalar(@$arg_list) + 1;
 } # qbox_extract_args
 
