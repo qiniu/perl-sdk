@@ -101,9 +101,13 @@ sub qbox_curl_call_core {
     if ($opts->{_as_verbatim}) {
         $ret = $resp;
     }
-    else {
-        $ret = length($resp) > 0 ? from_json($resp) : undef;
-    }
+    elsif (length($resp) > 0) {
+        eval { $ret = from_json($resp); };
+
+        if ($EVAL_ERROR) {
+            $ret = { 'response' => $resp };
+        }
+    } # if
 
     if ($curl_error) {
         $err->{code} = $curl_error + 0;
