@@ -577,9 +577,11 @@ sub oneshot {
     my $args   = shift;
     my $opts   = shift;
 
-    my ($ret, $err) = exec_cmd_internal($engine, 'auth_by_password');
-    if (not defined($ret)) {
-        ($ret, $err) = exec_cmd_internal($engine, 'auth_by_access_key');
+    if (not $engine->authorized()) {
+        my ($ret, $err) = exec_cmd_internal($engine, 'auth_by_password');
+        if (not defined($ret)) {
+            ($ret, $err) = exec_cmd_internal($engine, 'auth_by_access_key');
+        }
     }
     exec_cmd($engine, $cmd_ln, $args);
 } # oneshot

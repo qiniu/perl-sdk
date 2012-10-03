@@ -583,8 +583,8 @@ sub auth_by_password {
         eval {
             my $new_client = QBox::Client->new($auth);
 
-            if ($self->{client}) {
-                undef $self->{client};
+            if ($self->authorized()) {
+                $self->unauth();
             }
 
             $self->{client} = $new_client;
@@ -629,13 +629,23 @@ sub auth_by_access_key {
         return undef, { 'code' => 499, 'message' => "$EVAL_ERROR" };
     }
 
-    if ($self->{client}) {
-        undef $self->{client};
+    if ($self->authorized()) {
+        $self->unauth();
     }
 
     $self->{client} = $new_client;
     return {}, { 'code' => 200, 'message' => 'Login by access key'};
 } # auth_by_access_key
+
+sub authorized {
+    my $self = shift;
+    return defined($self->{client});
+} # authorized
+
+sub unauth {
+    my $self = shift;
+    undef $self->{client};
+} # unauth
 
 sub auto_auth {
     my $self = shift;
