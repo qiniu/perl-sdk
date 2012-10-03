@@ -419,14 +419,15 @@ my %methods = (
 );
 
 # make aliases
-$methods{pub}   = $methods{publish};
-$methods{unpub} = $methods{unpublish};
-$methods{puta}  = $methods{put_auth};
-$methods{putf}  = $methods{put_file};
-$methods{del}   = $methods{delete};
-$methods{appi}  = $methods{app_info};
-$methods{nacs}  = $methods{new_access};
-$methods{dacs}  = $methods{delete_access};
+$methods{pub}   = sub { $_[1] = 'publish';       return &$rs_exec; };
+$methods{unpub} = sub { $_[1] = 'unpublish';     return &$rs_exec; };
+$methods{puta}  = sub { $_[1] = 'put_auth';      return &$rs_exec; };
+$methods{putf}  = sub { $_[1] = 'put_file';      return &$rs_exec; };
+$methods{del}   = sub { $_[1] = 'delete';        return &$rs_exec; };
+
+$methods{appi}  = sub { $_[1] = 'app_info';      return &$uc_exec; };
+$methods{nacs}  = sub { $_[1] = 'new_access';    return &$uc_exec; };
+$methods{dacs}  = sub { $_[1] = 'delete_access'; return &$uc_exec; };
 
 sub AUTOLOAD {
     my $nm = our $AUTOLOAD;
