@@ -103,10 +103,6 @@ sub call_with_binary {
     my $body_len     = shift;
     my $opts         = shift;
 
-    if (ref($body) !~ m/^QBox::Reader::/ ) {
-        return undef, { code => 400, message => 'Invalid binary body' };
-    }
-
     my $headers = $qbox_client_gen_headers->($self, $url);
     $headers = qbox_curl_merge_headers(
         $headers,
@@ -135,7 +131,7 @@ sub call_with_buffer {
     my $opts         = shift;
 
     if (ref($body) ne q{}) {
-        return undef, { code => 400, message => 'Invalid buffer body' };
+        return undef, { code => 499, message => 'Invalid buffer body' };
     }
 
     my $headers = $qbox_client_gen_headers->($self, $url);
@@ -165,7 +161,7 @@ sub call_with_form {
     my $opts         = shift;
 
     if (ref($body) ne q{HASH}) {
-        return undef, { code => 400, message => 'Invalid form body' };
+        return undef, { code => 499, message => 'Invalid form body' };
     }
 
     my $headers = $qbox_client_gen_headers->($self, $url);
@@ -187,7 +183,7 @@ sub call_with_multipart_form {
     my $opts         = shift;
 
     if (ref($body) ne q{HASH}) {
-        return undef, { code => 400, message => 'Invalid form body' };
+        return undef, { code => 499, message => 'Invalid form body' };
     }
 
     my $headers = $qbox_client_gen_headers->($self, $url);

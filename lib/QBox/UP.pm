@@ -98,7 +98,7 @@ my $qbox_up_chunk_put = sub {
     my $chunk_crc32 = crc32($body_data);
     if ($chunk_crc32 != $ret->{crc32}) {
         $ret            = undef;
-        $err->{code}    = 400;
+        $err->{code}    = 499;
         $err->{message} = 'Failed in verifying chunk CRC32';
     }
 

@@ -124,7 +124,7 @@ sub admin_wmget {
     my ($id, $customer, $opts) = qbox_extract_args([qw{id customer}], @_);
 
     if (not defined($id) or $id eq q{}) {
-        return undef, { code => 400, message => 'Invalid UserID' };
+        return undef, { code => 499, message => 'Invalid User ID' };
     }
 
     $opts ||= {};
