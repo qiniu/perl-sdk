@@ -236,12 +236,11 @@ sub mkfile {
         } # for
     }
 
-    my $entry = qbox_make_entry($rs_args->{bucket}, $rs_args->{key}),
-
     $get_svc->($self, 'up');
     my ($ret, $err) = $self->{svc}{up}->mkfile(
         $new_args->{cmd} || 'rs-mkfile',
-        $entry,
+        $rs_args->{bucket},
+        $rs_args->{key},
         $new_args->{mime_type},
         $new_args->{fsize},
         $new_args->{params},
@@ -268,7 +267,6 @@ sub resumable_put {
 
     my $ret = undef;
     my $err = undef;
-    my $entry = qbox_make_entry($rs_args->{bucket}, $rs_args->{key}),
 
     $get_svc->($self, 'rs');
     ($ret, $err, $new_args->{prog}) = $self->{svc}{rs}->resumable_put(
@@ -276,7 +274,8 @@ sub resumable_put {
         $new_opts->{_notify}->{blk_notify},
         $new_opts->{_notify}->{chk_notify},
         $new_opts->{_notify},
-        $entry,
+        $rs_args->{bucket},
+        $rs_args->{key},
         $rs_args->{mime_type},
         $new_args->{reader_at},
         $new_args->{fsize},

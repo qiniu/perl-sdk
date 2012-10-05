@@ -232,17 +232,19 @@ sub put_auth_ex {
 sub resumable_put {
     my $self = shift;
     my ($prog, $blk_notify, $chk_notify, $notify_params,
-        $entry, $mime_type, $reader_at, $fsize,
+        $bucket, $key, $mime_type, $reader_at, $fsize,
         $custom_meta, $params, $callback_params, $opts) =
         qbox_extract_args([qw{
         prog blk_notify chk_notify notify_params
-        entry mime_type reader_at fsize
+        bucket key mime_type reader_at fsize
         custom_meta params callback_params}], @_);
 
-    return undef, { code => 499, message => 'Invalid entry' } if (not defined($entry));
+    return undef, { code => 499, message => 'Invalid bucket' } if (not defined($bucket));
+    return undef, { code => 499, message => 'Invalid key' } if (not defined($key));
     return undef, { code => 499, message => 'Invalid file size' } if (not defined($fsize));
 
-    $entry     = "$entry";
+    $bucket    = "$bucket";
+    $key       = "$key";
     $mime_type = defined($mime_type) ? "$mime_type" : q{application/octet-stream};
 
     $prog ||= QBox::UP::new_progress($fsize);
@@ -270,7 +272,8 @@ sub resumable_put {
     my $new_params = join('/', @new_params);
     ($ret, $err) = $up->mkfile(
         'rs-mkfile',
-        $entry,
+        $bucket,
+        $key,
         $mime_type,
         $fsize,
         $new_params,

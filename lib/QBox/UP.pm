@@ -271,9 +271,18 @@ sub resumable_blockput {
 
 sub mkfile_by_sha1 {
     my $self = shift;
-    my ($cmd, $entry, $mime_type, $fsize, $params, $callback_params, $checksums, $blk_count, $opts) =
-        qbox_extract_args([qw{cmd entry mime_type fsize params callback_params checksums blk_count}], @_);
+    my ($cmd, $bucket, $key, $mime_type, $fsize,
+        $params, $callback_params, $checksums, $blk_count, $opts) =
+        qbox_extract_args([qw{cmd bucket key mime_type fsize
+                              params callback_params checksums blk_count}], @_);
 
+    return undef, { code => 499, message => 'Invalid bucket' } if (not defined($bucket));
+    return undef, { code => 499, message => 'Invalid key' } if (not defined($key));
+
+    $bucket = "$bucket";
+    $key    = "$key";
+
+    my $entry = qbox_make_entry($bucket, $key);
     my @args = (
         $self->{hosts}{up_host},
         $cmd    => qbox_base64_encode_urlsafe("$entry"),
@@ -300,9 +309,18 @@ sub mkfile_by_sha1 {
 
 sub mkfile {
     my $self = shift;
-    my ($cmd, $entry, $mime_type, $fsize, $params, $callback_params, $prog, $opts) =
-        qbox_extract_args([qw{cmd entry mime_type fsize params callback_params prog}], @_);
+    my ($cmd, $bucket, $key, $mime_type, $fsize,
+        $params, $callback_params, $prog, $opts) =
+        qbox_extract_args([qw{cmd entry mime_type fsize
+                              params callback_params prog}], @_);
 
+    return undef, { code => 499, message => 'Invalid bucket' } if (not defined($bucket));
+    return undef, { code => 499, message => 'Invalid key' } if (not defined($key));
+
+    $bucket = "$bucket";
+    $key    = "$key";
+
+    my $entry = qbox_make_entry($bucket, $key);
     my @args = (
         $self->{hosts}{up_host},
         $cmd    => qbox_base64_encode_urlsafe("$entry"),
