@@ -329,7 +329,7 @@ my $slave_callback = sub {
     chomp($callback_ln);
 
     $callback_ln =~ s/^[#]\d+\s+ (?:[&]\d+)?//x;
-    trim_ln($callback_ln);
+    $callback_ln = trim_ln($callback_ln);
 
     my ($args, $opts) = split_args($callback_ln, []);
     $args = list_to_hash($args);
@@ -599,6 +599,7 @@ sub trim_ln {
     $ln =~ s/^[\\]//;
     $ln =~ s/[#].*$//;
     $ln =~ s/\s+$//;
+    return $ln;
 } # trim_ln
 
 sub split_args {
@@ -661,13 +662,18 @@ sub parse_cmd {
     my $args   = shift || [];
     my $opts   = shift || {};
 
-    trim_ln($cmd_ln);
+    $cmd_ln = trim_ln($cmd_ln);
 
     my $remain = undef;
     if (scalar(@$args) == 0) {
+        if ($cmd_ln eq q{}) {
+            return $args, $opts, q{};
+        }
+
         if ($cmd_ln !~ m/^\s*(\w+)\s*(.*)$/) {
             return $args, $opts, " \\";
         }
+
         push @$args, $1; # cmd
         $remain = $2;
     }
@@ -704,7 +710,7 @@ sub exec_file {
         chomp($cmd_ln);
 
         ($args, $opts, $remain) = parse_cmd("${remain}${cmd_ln}", $args);
-        next if ($remain);
+        next if ($remain || scalar(@$args) == 0);
 
         exec_cmd($engine, $cmd_ln, $args, $opts);
         $args   = undef;
