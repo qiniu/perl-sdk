@@ -325,7 +325,7 @@ sub parse_resp {
     my $resp = shift;
     $resp =~ s/^(\d{4}-\d{2}-\d{2}\s+\d{2}:\d{2}:\d{2}\s+)? [#]\d+\s+ (?:[&]\d+)?//x;
     $resp = trim_ln($resp);
-    return split_args($resp, []);
+    return split_kv_pairs($resp);
 } # parse_resp
 
 my $slave_callback = sub {
@@ -496,7 +496,7 @@ $wrapped_cmd{rputl} = $wrapped_cmd{resumable_put_parallel};
 sub exec_cmd_internal {
     my $engine = shift;
     my $cmd_ln = shift;
-    my ($args, $opts, $remain) = parse_cmd($cmd_ln, []);
+    my ($args, $opts, $remain) = parse_cmd($cmd_ln);
     exec_cmd($engine, $cmd_ln, $args, $opts);
 } # exec_cmd_internal
 
@@ -606,21 +606,10 @@ sub trim_ln {
     return $ln;
 } # trim_ln
 
-sub split_args {
-    my $cmd_ln = shift;
+sub split_kv_pairs {
+    my $remain = shift;
     my $args   = shift || [];
     my $opts   = shift || {};
-
-    if ($cmd_ln eq q{}) {
-        return $args, $opts, " \\";
-    }
-
-    my $remain = $cmd_ln;
-    if ($remain =~ m/^(.*)\s+[&]((?:\d+)?)$/) {
-        my $job = $2 || 0;
-        $opts->{_slave} = $job + 0;
-        $remain = $1;
-    }
 
     if ($remain eq q{}) {
         return $args, $opts, $remain;
@@ -634,7 +623,7 @@ sub split_args {
         return $args, $opts, substr($remain, pos($remain));
     }
     return $args, $opts, q{};
-} # split_args
+} # split_kv_pairs
 
 my $arg_re = qr/^[^_]/;
 sub list_to_hash {
@@ -689,7 +678,13 @@ sub parse_cmd {
         return  $args, $opts, q{};
     }
 
-    return split_args($remain, $args, $opts);
+    if ($remain =~ m/^(.*)\s+[&]((?:\d+)?)$/) {
+        my $job = $2 || 0;
+        $opts->{_slave} = $job + 0;
+        $remain = $1;
+    }
+
+    return split_kv_pairs($remain, $args, $opts);
 } # parse_cmd
 
 sub exec_file {
