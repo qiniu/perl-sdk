@@ -705,6 +705,8 @@ sub exec_file {
     my $engine = shift;
     my $fh     = shift;
 
+    my $full_cmd_ln = q{};
+
     my $args   = undef;
     my $opts   = undef;
     my $remain = q{};
@@ -721,13 +723,16 @@ sub exec_file {
         }
 
         chomp($cmd_ln);
+        $full_cmd_ln = "${full_cmd_ln}${cmd_ln}";
+        $full_cmd_ln =~ s/\\$//;
 
         ($args, $opts, $remain) = parse_cmd("${remain}${cmd_ln}", $args);
         next if (length($remain) > 0 || scalar(@$args) == 0);
 
-        exec_cmd($engine, $cmd_ln, $args, $opts);
+        exec_cmd($engine, $full_cmd_ln, $args, $opts);
         $args   = undef;
         $remain = q{};
+        $full_cmd_ln = q{};
     } # while
 } # exec_file
 
