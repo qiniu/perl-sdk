@@ -321,6 +321,13 @@ sub format_result {
     return join(q{ }, @fields);
 } # format_result
 
+sub parse_resp {
+    my $resp = shift;
+    $resp =~ s/^(\d{4}-\d{2}-\d{2}\s+\d{2}:\d{2}:\d{2}\s+)? [#]\d+\s+ (?:[&]\d+)?//x;
+    $resp = trim_ln($resp);
+    return split_args($resp, []);
+} # parse_resp
+
 my $slave_callback = sub {
     my $proc    = shift;
     my $uservar = shift;
@@ -328,10 +335,7 @@ my $slave_callback = sub {
     my $callback_ln = readline($proc->{mgr_read});
     chomp($callback_ln);
 
-    $callback_ln =~ s/^[#]\d+\s+ (?:[&]\d+)?//x;
-    $callback_ln = trim_ln($callback_ln);
-
-    my ($args, $opts) = split_args($callback_ln, []);
+    my ($args, $opts) = parse_resp($callback_ln);
     $args = list_to_hash($args);
 
     if ($uservar->{callback}) {
