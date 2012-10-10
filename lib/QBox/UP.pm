@@ -311,7 +311,7 @@ sub mkfile {
     my $self = shift;
     my ($cmd, $bucket, $key, $mime_type, $fsize,
         $params, $callback_params, $prog, $opts) =
-        qbox_extract_args([qw{cmd entry mime_type fsize
+        qbox_extract_args([qw{cmd bucket key mime_type fsize
                               params callback_params prog}], @_);
 
     return undef, { code => 499, message => 'Invalid bucket' } if (not defined($bucket));
