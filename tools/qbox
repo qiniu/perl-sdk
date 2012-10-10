@@ -614,13 +614,26 @@ sub split_kv_pairs {
         return $args, $opts, $remain;
     }
     
-    while ($remain =~ m/([^\s=]+=(?:$double_re|$single_re|$brace_re|$bracket_re|\S+))\s*/gc) {
+    my $pos = undef;
+    while ($remain =~ m/([^\s=]+=(?:$double_re|$single_re|$brace_re|$bracket_re|[^"'\[{]\S*))\s*/gc) {
         push @$args, $1;
+        $pos = pos($remain);
     } # while
 
-    if (pos($remain) < length($remain)) {
+    if (not defined($pos)) {
+        # only comments..
+        return $args, $opts, $remain;
+    }
+
+    if ($pos < length($remain)) {
+        # arg1={ # non-ended pair
+        # arg1=[ # non-ended pair
+        # arg1=' # non-ended pair 
+        # arg1=" # non-ended pair
         return $args, $opts, substr($remain, pos($remain));
     }
+
+    # arg1=xxx arg2=yyyy # complete kv pairs
     return $args, $opts, q{};
 } # split_kv_pairs
 
