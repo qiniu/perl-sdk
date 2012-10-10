@@ -483,8 +483,12 @@ sub new {
         'hosts'   => {},
         'headers' => {},
         'auth'    => {
+            'client_id'     => undef,
+            'client_secret' => undef,
+
             'username'   => undef,
             'password'   => undef,
+
             'access_key' => undef,
             'secret_key' => undef,
         },
