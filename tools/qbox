@@ -600,7 +600,6 @@ my $double_re = qr/" [^\\"]* (?:\\..*)* "/x;
 sub trim_ln {
     my $ln = shift;
     $ln =~ s/^\s+//;
-    $ln =~ s/^[\\]//;
     $ln =~ s/[#].*$//;
     $ln =~ s/\s+$//;
     return $ln;
@@ -664,7 +663,7 @@ sub parse_cmd {
         }
 
         if ($cmd_ln !~ m/^\s*(\w+)\s*(.*)$/) {
-            return $args, $opts, " \\";
+            return $args, $opts, $remain;
         }
 
         push @$args, $1; # cmd
@@ -684,7 +683,9 @@ sub parse_cmd {
         $remain = $1;
     }
 
-    return split_kv_pairs($remain, $args, $opts);
+    ($args, $opts, $remain) = split_kv_pairs($remain, $args, $opts);
+    $remain =~ s/\\$/ /;
+    return $args, $opts, $remain;
 } # parse_cmd
 
 sub exec_file {
@@ -709,7 +710,7 @@ sub exec_file {
         chomp($cmd_ln);
 
         ($args, $opts, $remain) = parse_cmd("${remain}${cmd_ln}", $args);
-        next if ($remain || scalar(@$args) == 0);
+        next if (length($remain) > 0 || scalar(@$args) == 0);
 
         exec_cmd($engine, $cmd_ln, $args, $opts);
         $args   = undef;
