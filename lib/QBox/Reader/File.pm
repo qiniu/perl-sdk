@@ -39,7 +39,7 @@ sub new {
     my $args  = shift || {};
     my $self = {};
 
-    if ($args->{file} and $args->{file} ne q{}) {
+    if (defined($args->{file}) and $args->{file} ne q{}) {
         my $file  = $args->{file};
 
         open(my $fh, '<', $file) or return undef, { code => 499, message => "$OS_ERROR" };

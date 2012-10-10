@@ -66,9 +66,11 @@ sub gen_headers {
     my $url  = shift;
 
     my $encoded_sha1 = $qbox_auth_digest_gen_sha1->($self->{scr_key}, $url);
-    my $header       = "Authorization: QBox " . $self->{acs_key} . ":" . $encoded_sha1;
+    my $headers      = {
+        "Authorization" => "QBox " . $self->{acs_key} . ":" . $encoded_sha1,
+    };
 
-    return [$header];
+    return $headers;
 } # gen_headers
 
 1;
