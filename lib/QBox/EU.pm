@@ -14,8 +14,45 @@ use strict;
 use warnings;
 
 use QBox::Config;
+use QBox::Misc;
+
+use constant API_WMSET       => 'eu.wmset';
+use constant API_WMGET       => 'eu.wmget';
+use constant API_ADMIN_WMGET => 'eu.admin-wmget';
 
 ### for OOP
+my $qbox_eu_wmget = sub {
+    my $self     = shift;
+    my $api      = shift;
+    my $customer = shift;
+    my $query    = shift || {};
+    my $opts     = shift || {}; 
+
+    $opts->{_api} ||= $api;
+
+    if (defined($customer) and "$customer" ne q{}) {
+        $query->{customer} = "$customer";
+    }
+
+    my $url = "$self->{hosts}{eu_host}/${api}";
+    my $ret = undef;
+    my $err = undef;
+
+    if (scalar(keys(%$query)) > 0) {
+        ($ret, $err) = $self->{client}->call_with_multipart_form(
+            $url,
+            $query,
+            undef,   # no body length
+            $opts
+        );
+    }
+    else {
+        ($ret, $err) = $self->{client}->call($url, $opts);
+    }
+
+    return $ret, $err;
+};
+
 sub new {
     my $class  = shift || __PACKAGE__;
     my $client = shift;
@@ -49,8 +86,8 @@ sub wm_setting_names {
 } # wm_setting_names 
 
 sub wmset {
-    my $self     = shift;
-    my $settings = shift;
+    my $self = shift;
+    my ($settings, $opts) = qbox_extract_args([qw{settings}], @_);
 
     my $new_settings = {};
     foreach my $key (keys(%$settings)) {
@@ -63,44 +100,37 @@ sub wmset {
         }
     } # foreach
 
+    $opts ||= {};
+    $opts->{_api} = API_WMSET;
     my $url = "$self->{hosts}{eu_host}/wmset";
-    return $self->{client}->call_with_form($url, $new_settings);
+    return $self->{client}->call_with_multipart_form(
+        $url,
+        $new_settings,
+        undef,           # no body length
+        $opts
+    );
 } # wmset
 
 sub wmget {
-    my $self     = shift;
-    my $customer = shift;
-    my $query    = shift || {};
-
-    if (defined($customer) and $customer ne q{}) {
-        $query->{customer} = $customer;
-    }
-
-    my $url = "$self->{hosts}{eu_host}/wmget";
-    my $ret = undef;
-    my $err = undef;
-
-    if (scalar(keys(%$query)) > 0) {
-        ($ret, $err) = $self->{client}->call_with_form($url, $query);
-    }
-    else {
-        ($ret, $err) = $self->{client}->call($url);
-    }
-
-    return $ret, $err;
+    my $self = shift;
+    my ($customer, $query, $opts) = qbox_extract_args([qw{customer query}], @_);
+    $opts ||= {};
+    $opts->{_api} = API_WMGET;
+    return $self->$qbox_eu_wmget('wmget', $customer, $query, $opts);
 } # wmget
 
 sub admin_wmget {
-    my $self     = shift;
-    my $id       = shift;
-    my $customer = shift;
+    my $self = shift;
+    my ($id, $customer, $opts) = qbox_extract_args([qw{id customer}], @_);
 
     if (not defined($id) or $id eq q{}) {
-        return undef, { code => 400, message => 'Invalid UserID' };
+        return undef, { code => 499, message => 'Invalid User ID' };
     }
 
+    $opts ||= {};
+    $opts->{_api} = API_ADMIN_WMGET;
     my $query = { id => $id };
-    return $self->wmget($customer, $query);
+    return $self->$qbox_eu_wmget('admin/wmget', $customer, $query, $opts);
 } # admin_wmget
 
 1;

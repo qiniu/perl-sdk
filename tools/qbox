@@ -1,0 +1,818 @@
+#!/usr/bin/env perl
+
+use strict;
+use warnings;
+
+use IO::Handle;
+use English;
+use File::Basename;
+
+use JSON; # external library
+
+use QBox::Stub;
+use QBox::Misc;
+
+use QBox::Tools::Engine;
+use QBox::Tools::SlaveManager;
+
+### up callbacks
+my $up_read_progress_as_plain_text = sub {
+    my $fh = shift;
+
+    my $prog = {};
+    my $line = undef;
+
+    $line = <$fh>;
+    if ($line !~ m/^block_count=(\d+)\n/) {
+        die "Invalid progress file: No block count.";
+    }
+    $prog->{blk_count} = $1;
+
+    $prog->{checksums} = [];
+    for (my $i = 0; $i < $prog->{blk_count}; ++$i) {
+        $line = <$fh>;
+        if ($line !~ m/^checksum=(.*)\n/) {
+            die "Invalid progress file: Invalid checksum.";
+        }
+
+        push @{$prog->{checksums}}, { value => $1 };
+    } # for
+
+    $prog->{progs} = [];
+    for (my $i = 0; $i < $prog->{blk_count}; ++$i) {
+        my $pg = {};
+
+        $line = <$fh>;
+        if ($line !~ m/^offset=(\d+)\n/) {
+            die "Invalid progress file: Invalid offset.";
+        }
+        $pg->{offset} = $1;
+
+        $line = <$fh>;
+        if ($line !~ m/^rest_size=(\d+)\n/) {
+            die "Invalid progress file: Invalid rest size.";
+        }
+        $pg->{rest_size} = $1;
+
+        $line = <$fh>;
+        if ($line !~ m/^ctx=(.*)\n/) {
+            die "Invalid progress file: Invalid context.";
+        }
+        $pg->{ctx} = $1;
+
+        push @{$prog->{progs}}, $pg;
+    } # for
+
+    return $prog;
+};
+
+my $up_read_progress = sub {
+    my $params = shift;
+    
+    my $prog_fl = $params->{prog_fl};
+    return undef if (not defined($prog_fl) or $prog_fl eq q{});
+    return undef if (not -r $prog_fl);
+
+    open(my $fh, '<', $prog_fl) or die "$OS_ERROR";
+
+    my $prog = undef;
+    if ($prog_fl =~ m/json$/i) {
+        local $/ = undef;
+        my $text = <$fh>;
+        $prog = from_json($text);
+    }
+    else {
+        $prog = $up_read_progress_as_plain_text->($fh);
+    }
+
+    close($fh);
+    return $prog;
+};
+
+my $up_write_progress_as_plain_text = sub {
+    my $fh   = shift;
+    my $prog = shift;
+
+    printf {$fh} "block_count=%d\n", $prog->{blk_count};
+
+    foreach my $cksum (@{$prog->{checksums}}) {
+        printf {$fh} "checksum=%s\n", ($cksum->{value} || q{});
+    } # foreach
+
+    foreach my $pg (@{$prog->{progs}}) {
+        printf {$fh} "offset=%d\n", $pg->{offset};
+        printf {$fh} "rest_size=%d\n", $pg->{rest_size};
+        printf {$fh} "ctx=%s\n", ($pg->{ctx} || q{});
+    } # foreach
+};
+
+my $up_write_progress = sub {
+    my $params = shift;
+    my $prog   = shift;
+
+    my $prog_fl = $params->{prog_fl};
+    return if (not defined($prog_fl) or $prog_fl eq q{});
+
+    open(my $fh, '>', $prog_fl) or die "$OS_ERROR";
+
+    if ($prog_fl =~ m/json$/i) {
+        printf {$fh} "%s", to_json($prog, { pretty => 1 });
+    }
+    else {
+        $up_write_progress_as_plain_text->($fh, $prog);
+    }
+
+    close($fh);
+};
+
+my $up_blk_abort = sub {
+    my $params    = shift;
+    my $blk_index = shift;
+    my $checksum  = shift;
+
+    my $stop_idx = $params->{stop_idx};
+    if (defined($stop_idx) and $blk_index == $stop_idx) {
+        print {$params->{out_fh}} "Abort uploading block(#${stop_idx}).\n";
+        return 0;
+    }
+    return 1;
+};
+
+my $up_blk_notify = sub {
+    my $params    = shift;
+    my $blk_index = shift;
+    my $checksum  = shift;
+
+    print {$params->{out_fh}} "blk_index=${blk_index}, checksum=[$checksum->{value}]\n";
+    $up_blk_abort->($params, $blk_index, $checksum);
+};
+
+my $up_chk_abort = sub {
+    my $params    = shift;
+    my $blk_index = shift;
+    my $prog      = shift;
+
+    my $stop_idx = $params->{stop_idx};
+    if (defined($stop_idx) and $blk_index == $stop_idx) {
+        my $stop_size = $params->{stop_size};
+        if (defined($stop_size) and $prog->{offset} >= $stop_size) {
+            print {$params->{out_fh}} "Abort uploading chunk(#$prog->{stop_idx}, \@$prog->{offset}).\n";
+            return 0;
+        }
+    }
+    return 1;
+};
+
+my $up_chk_notify = sub {
+    my $params    = shift;
+    my $blk_index = shift;
+    my $prog      = shift;
+
+    print {$params->{out_fh}} "blk_index=${blk_index}, uploaded=$prog->{offset}, rest=$prog->{rest_size}, ctx=[$prog->{ctx}]\n";
+    $up_chk_abort->($params, $blk_index, $prog);
+};
+
+### helper routines
+my $slave_mgr = undef;
+my $cmd_count = 0;
+
+our $ps_level = 1;
+my $ps = '>';
+my $parallel = 5;
+
+my $debug   = undef;
+my $verbose = 0;
+my $pretty  = undef;
+my $prompt  = undef;
+
+my $get_tv   = undef;
+my $delta_tv = undef;
+
+eval "require Time::HiRes;";
+
+if ($EVAL_ERROR) {
+    $get_tv = sub {
+        return time();
+    };
+
+    $delta_tv = sub {
+        my $tv_lhs = shift;
+        my $tv_rhs = shift;
+        return ($tv_lhs - $tv_rhs) * 1000;
+    };
+}
+else {
+    $get_tv = sub {
+        my $tv = {};
+        ($tv->{sec}, $tv->{usec}) = Time::HiRes::gettimeofday();
+        return $tv;
+    };
+
+    $delta_tv = sub {
+        my $tv_lhs = shift;
+        my $tv_rhs = shift;
+        my $delta = ($tv_lhs->{sec} - $tv_rhs->{sec}) * 1000
+                  + ($tv_lhs->{usec} - $tv_rhs->{usec}) / 1000;
+        return $delta;
+    };
+};
+
+sub fmt_json {
+    my $obj = shift;
+    if ($pretty) {
+        my $json = to_json($obj, { pretty => 1});
+        $json =~ s/\n$//;
+        return $json;
+    }
+    return to_json($obj);
+} # fmt_json
+
+sub get_opts {
+    my $args    = shift;
+    my $options = {};
+    my $fixed   = [];
+
+    for (my $i = 0; $i < scalar(@$args); ++$i) {
+        my $arg = $args->[$i];
+
+        if ($arg =~ m/^(?:--command-file|-f)/) {
+            $options->{cmd_files} ||= [];
+            push @{$options->{cmd_files}}, split(",", $args->[$i + 1]);
+            ++$i;
+            next;
+        }
+
+        if ($arg =~ m/^(?:--interact|-i)/) {
+            $prompt = 1;
+            next;
+        }
+
+        if ($arg =~ m/^(?:--debug|-d)/) {
+            $debug = 1;
+            next;
+        }
+
+        if ($arg =~ m/^(?:--verbose|-v)/) {
+            $verbose += 1;
+            next;
+        }
+
+        if ($arg =~ m/^(?:--pretty|-P)/) {
+            $pretty = 1;
+            next;
+        }
+
+        if ($arg =~ m/^(?:--parallel)/) {
+            $parallel = ($args->[$i + 1] + 0) || 5;
+            ++$i;
+            next;
+        }
+
+        if ($arg =~ m/^(?:--ps)/) {
+            $ps = $args->[$i + 1] || '>';
+            next;
+        }
+
+        if ($arg =~ m/^(?:--help|-h)/) {
+            my $prog_nm = basename($0);
+            print "Usage: ${prog_nm} [OPTION] CMD [PARAM=ARG [PARAM=ARG [...]]]\n";
+            exit(0);
+        }
+
+        if ($arg =~ m/^-/) {
+            print STDERR "Unknown option '$arg'.\n";
+            exit(1);
+        }
+
+        push @$fixed, $arg;
+    } # for
+
+    return $fixed, $options;
+} # get_opts
+
+sub format_result {
+    my $cmd_idx = shift;
+    my $job_idx = shift;
+    my $delta   = shift;
+    my $code    = shift;
+    my $message = shift;
+    my $result  = shift || {};
+
+    my @fields = ();
+
+    my ($sec, $min, $hour, $day, $mon, $year) = localtime(time);
+    my $ts = sprintf("%04d-%02d-%02d %02d:%02d:%02d", $year + 1900, $mon + 1, $day, $hour, $min, $sec);
+    push @fields, $ts;
+
+    push @fields, "#${cmd_idx}";
+
+    if ($job_idx) {
+        push @fields, "&${job_idx}";
+    }
+
+    push @fields, "time=${delta}ms";
+    push @fields, "code=${code}";
+
+    $message =~ s/(?!\\)[']/\\'/g;
+    push @fields, "message='${message}'";
+
+    push @fields, sprintf("ret=%s", fmt_json($result));
+
+    return join(q{ }, @fields);
+} # format_result
+
+sub parse_resp {
+    my $resp = shift;
+    $resp =~ s/^(\d{4}-\d{2}-\d{2}\s+\d{2}:\d{2}:\d{2}\s+)? [#]\d+\s+ (?:[&]\d+)?//x;
+    $resp = trim_ln($resp);
+    return split_kv_pairs($resp);
+} # parse_resp
+
+my $slave_callback = sub {
+    my $proc    = shift;
+    my $uservar = shift;
+
+    my $callback_ln = readline($proc->{mgr_read});
+    chomp($callback_ln);
+
+    my ($args, $opts) = parse_resp($callback_ln);
+    $args = list_to_hash($args);
+
+    if ($uservar->{callback}) {
+        my $ret = $uservar->{callback}->($args, $opts);
+        return undef unless $ret; # no longer busy
+    }
+
+    $uservar->{end_tv} = $get_tv->();
+    my $delta = $delta_tv->($uservar->{end_tv}, $uservar->{begin_tv});
+
+    my $output = format_result(
+        $uservar->{cmd_idx},
+        $proc->{job},
+        $delta,
+        $args->{code},
+        $args->{message},
+        $args->{ret},
+    );
+    print $output, "\n";
+    if ($pretty) {
+        print "\n";
+    }
+
+    return undef; # no longer busy
+};
+
+sub run_in_slave {
+    my $engine  = shift;
+    my $cmd_idx = shift;
+    my $cmd_ln  = shift;
+    my $uservar = shift || {};
+    my $opts    = shift || {};
+
+    $uservar->{cmd_idx}  = $cmd_idx;
+    $uservar->{callback} = $opts->{_callback};
+    $uservar->{begin_tv} = $opts->{_begin_tv};
+
+    my $proc = $slave_mgr->start($slave_callback, $uservar);
+    if ($proc->{child}) {
+        $ps_level = 1;
+        $cmd_count = 0;
+
+        $verbose = 0;
+        $debug   = undef;
+        $pretty  = undef;
+
+        $proc->{work_write}->autoflush(1);
+        $proc->{work_err}->autoflush(1);
+        slave($engine, [\*STDIN]);
+        exit(0);
+    }
+
+    $proc->{mgr_write}->autoflush(1);
+    $cmd_ln =~ s/\s*[&](?:\d*)\s*$//;
+    print {$proc->{mgr_write}} "$cmd_ln\n";
+
+    return {}, { 'code' => 200, 'message' => 'Slave task dispatched' };
+} # run_in_slave
+
+my %wrapped_cmd = (
+    'resumable_put_parallel' => sub {
+        our $ps_level;
+        $ps_level += 1;
+
+        my $engine = shift;
+        my $args   = shift;
+        my $opts   = shift;
+
+        my $fsize = (stat($args->{file} || $args->{src}))[7];
+        my $prog  = $up_read_progress->($args) || QBox::UP::new_progress($fsize);
+        my ($ret, $err) = ();
+
+        for (my $i = 0; $i < $prog->{blk_count}; ++$i) {
+            my $cmd_args = [
+                "resumable_blockput",
+                "src=" . ($args->{file} || $args->{src}),
+                "blk_index=" . $i,
+            ];
+            if (defined($opts->{_headers})) {
+                push @$cmd_args, sprintf("_headers=%s", to_json($opts->{_headers}));
+            }
+
+            my $j = $i;
+            my $cmd_opts = {
+                '_callback' => sub {
+                    my $args = shift;
+                    $prog->{progs}[$j]{ctx}     = $args->{ret}{ctx};
+                    $prog->{progs}[$j]{code}    = $args->{code};
+                    $prog->{progs}[$j]{message} = $args->{message};
+                    return 1;
+                },
+                '_slave' => 1,
+            };
+            my $cmd_ln = join(q{ }, @$cmd_args);
+
+            ($ret, $err) = exec_cmd($engine, $cmd_ln, $cmd_args, $cmd_opts);
+        } # for
+
+        $slave_mgr->check_done() while ($slave_mgr->is_busy());
+
+        if ($err->{code} != 200) {
+            return $ret, $err;
+        }
+
+        my $err_count = 0;
+
+        for (my $i = 0; $i < $prog->{blk_count}; ++$i) {
+            if ($prog->{progs}[$i]{code} != 200) {
+                $err_count += 1;
+            }
+        } # for
+
+        if ($err_count > 0) {
+            return undef, { 'code' => 499, 'message' => "$err_count block failed to put." };
+        }
+
+        {
+            my $cmd_args = ["mkfile", "fsize=$fsize"];
+
+            my $bkt = $args->{bucket} || $args->{bkt};
+            if ($bkt) {
+                push @$cmd_args, "bucket=$bkt";
+            }
+
+            if ($args->{key}) {
+                push @$cmd_args, "key=$args->{key}";
+            }
+            if ($args->{mime_type}) {
+                push @$cmd_args, "mime_type=$args->{mime_type}";
+            }
+            if ($args->{params}) {
+                push @$cmd_args, "params=$args->{params}";
+            }
+            if ($args->{callback_params}) {
+                push @$cmd_args, "callback_params=$args->{callback_params}";
+            }
+
+            my $ctx_arr = [ map { $_->{ctx} } @{$prog->{progs}} ];
+            push @$cmd_args, "ctx=" . to_json($ctx_arr);
+
+            my $cmd_opts = { '_headers' => {} };
+
+            if (defined($opts->{_headers})) {
+                qbox_hash_merge($cmd_opts->{_headers}, $opts->{_headers} || {}, 'FROM');
+                push @$cmd_args, "_headers=" . to_json($opts->{_headers});
+            }
+
+            my $cmd_ln = join(q{ }, @$cmd_args);
+            exec_cmd($engine, $cmd_ln, $cmd_args, $cmd_opts);
+        }
+
+        return {}, { 'code' => 200, 'message' => "File uploaded." };
+    },
+);
+
+$wrapped_cmd{rputl} = $wrapped_cmd{resumable_put_parallel};
+
+sub exec_cmd_internal {
+    my $engine = shift;
+    my $cmd_ln = shift;
+    my ($args, $opts, $remain) = parse_cmd($cmd_ln);
+    exec_cmd($engine, $cmd_ln, $args, $opts);
+} # exec_cmd_internal
+
+my $opt_re = qr/^[_]/;
+sub exec_cmd {
+    my $engine = shift;
+    my $cmd_ln = shift;
+    my $args   = shift;
+    my $opts   = shift || {};
+
+    $cmd_count += 1;
+    my $cmd_idx = $cmd_count;
+
+    my $first = shift(@$args) || q{};
+    my $cmd = lc($first);
+    if ($verbose > 0) {
+        my $ps_str = $ps x $ps_level;
+
+        if ($verbose < 2 and $cmd eq 'set_auth') {
+            print "$ps_str $first ... #$cmd_idx\n";
+        }
+        else {
+            print "$ps_str $cmd_ln #$cmd_idx\n";
+        }
+    }
+
+    my $cmd_args = list_to_hash($args);
+    my $cmd_opts = list_to_hash($args, $opt_re);
+
+    $opts->{_begin_tv} = $get_tv->();
+
+    if (defined($opts->{_slave})) {
+        delete $opts->{_slave};
+        return run_in_slave($engine, $cmd_idx, $cmd_ln, undef, $opts);
+    }
+
+    if ($cmd eq 'rput' or $cmd eq 'resumable_put') {
+        my $notify = {
+            'stop_blk'   => $cmd_opts->{_stop_blk},
+            'stop_chk'   => $cmd_opts->{_stop_chk},
+            'prog_fl'    => $cmd_opts->{_prog_fl},
+            'notify_blk' => (defined($cmd_opts->{_stop_blk})) ? $up_blk_notify : $up_blk_abort,
+            'notify_chk' => (defined($cmd_opts->{_stop_chk})) ? $up_chk_notify : $up_chk_abort,
+            'out_fh'     => \*STDERR,
+        };
+
+        if (defined($notify->{_stop_chk})) {
+            $notify->{_stop_blk} ||= 0;
+        }
+
+        $cmd_opts->{_notify} = $notify;
+    }
+
+    my $final_opts = qbox_hash_merge({}, $opts, 'FROM');
+    $final_opts = qbox_hash_merge($final_opts, $cmd_opts, 'FROM');
+
+    my ($ret, $err) = ();
+    if ($wrapped_cmd{$cmd}) {
+        ($ret, $err) = $wrapped_cmd{$cmd}->($engine, $cmd_args, $final_opts);
+    }
+    else {
+        ($ret, $err) = $engine->$cmd($cmd_args, $final_opts);
+    }
+
+    if (not defined($final_opts->{_no_output})) {
+        $final_opts->{_end_tv} = $get_tv->();
+        my $delta = $delta_tv->($final_opts->{_end_tv}, $final_opts->{_begin_tv});
+
+        my $output = format_result($cmd_idx, undef, $delta, $err->{code}, $err->{message}, $ret);
+        print $output, "\n";
+        if ($pretty) {
+            print "\n";
+        }
+    }
+
+    return $ret, $err;
+} # exec_cmd
+
+sub oneshot {
+    my $engine = shift;
+    my $cmd_ln = shift;
+    my $args   = shift;
+    my $opts   = shift;
+
+    if (not $engine->authorized()) {
+        my ($ret, $err) = exec_cmd_internal($engine, 'auth_by_password');
+        if (not defined($ret)) {
+            ($ret, $err) = exec_cmd_internal($engine, 'auth_by_access_key');
+        }
+    }
+    exec_cmd($engine, $cmd_ln, $args);
+} # oneshot
+
+my $brace_re = undef;
+$brace_re = qr/\{ (?: [^\{\}] | (??{ $brace_re }) )* \}/x;
+my $bracket_re = undef;
+$bracket_re = qr/\[ (?: [^\[\]] | (??{ $bracket_re }) )* \]/x;
+my $single_re = qr/' [^\\']* (?:\\[\\'].*)* '/x;
+my $double_re = qr/" [^\\"]* (?:\\..*)* "/x;
+
+sub trim_ln {
+    my $ln = shift;
+    $ln =~ s/^\s+//;
+    $ln =~ s/[#].*$//;
+    $ln =~ s/\s+$//;
+    return $ln;
+} # trim_ln
+
+sub split_kv_pairs {
+    my $remain = shift;
+    my $args   = shift || [];
+    my $opts   = shift || {};
+
+    if ($remain eq q{}) {
+        return $args, $opts, $remain;
+    }
+    
+    my $pos = undef;
+    while ($remain =~ m/([^\s=]+=(?:$double_re|$single_re|$brace_re|$bracket_re|[^"'\[{]\S*))\s*/gc) {
+        push @$args, $1;
+        $pos = pos($remain);
+    } # while
+
+    if (not defined($pos)) {
+        # only comments..
+        return $args, $opts, $remain;
+    }
+
+    if ($pos < length($remain)) {
+        # arg1={ # non-ended pair
+        # arg1=[ # non-ended pair
+        # arg1=' # non-ended pair 
+        # arg1=" # non-ended pair
+        return $args, $opts, substr($remain, pos($remain));
+    }
+
+    # arg1=xxx arg2=yyyy # complete kv pairs
+    return $args, $opts, q{};
+} # split_kv_pairs
+
+my $arg_re = qr/^[^_]/;
+sub list_to_hash {
+    my $list = shift;
+    my $re   = shift || $arg_re;
+    my $hash = { map { split('=', $_, 2) } grep { $_ =~ $re } @$list };
+    foreach my $value (values(%$hash)) {
+        eval { $value = from_json($value); };
+
+        if ($EVAL_ERROR) {
+            if ($value =~ m/' ([^\\']* (?:\\[\\'].*)*) '/x ) {
+                $value = $1;
+                $value =~ s/\\'/'/;
+                next;
+            }
+
+            if ($value =~ m/" ([^\\"]* (?:\\..*)*) "/x ) {
+                $value = $1;
+                $value =~ s/\\"/"/;
+                next;
+            }
+        }
+    } # foreach
+    return $hash;
+} # list_to_hash
+
+sub parse_cmd {
+    my $cmd_ln = shift;
+    my $args   = shift || [];
+    my $opts   = shift || {};
+
+    $cmd_ln = trim_ln($cmd_ln);
+
+    my $remain = undef;
+    if (scalar(@$args) == 0) {
+        if ($cmd_ln eq q{}) {
+            return $args, $opts, q{};
+        }
+
+        if ($cmd_ln !~ m/^\s*(\w+)\s*(.*)$/) {
+            return $args, $opts, $remain;
+        }
+
+        push @$args, $1; # cmd
+        $remain = $2;
+    }
+    else {
+        $remain = $cmd_ln;
+    }
+
+    if ($remain eq q{}) {
+        return  $args, $opts, q{};
+    }
+
+    if ($remain =~ m/^(.*)\s+[&]((?:\d+)?)$/) {
+        my $job = $2 || 0;
+        $opts->{_slave} = $job + 0;
+        $remain = $1;
+    }
+
+    ($args, $opts, $remain) = split_kv_pairs($remain, $args, $opts);
+    $remain =~ s/\\$/ /;
+    return $args, $opts, $remain;
+} # parse_cmd
+
+sub exec_file {
+    my $engine = shift;
+    my $fh     = shift;
+
+    my $full_cmd_ln = q{};
+
+    my $args   = undef;
+    my $opts   = undef;
+    my $remain = q{};
+    while (1) {
+        $slave_mgr->check_done(0);
+
+        my $cmd_ln = <$fh>;
+
+        if (not defined($cmd_ln)) {
+            if ($slave_mgr->is_busy()){
+                next;
+            }
+            last;
+        }
+
+        chomp($cmd_ln);
+        $full_cmd_ln = "${full_cmd_ln}${cmd_ln}";
+        $full_cmd_ln =~ s/\\$//;
+
+        ($args, $opts, $remain) = parse_cmd("${remain}${cmd_ln}", $args);
+        next if (length($remain) > 0 || scalar(@$args) == 0);
+
+        exec_cmd($engine, $full_cmd_ln, $args, $opts);
+        $args   = undef;
+        $remain = q{};
+        $full_cmd_ln = q{};
+    } # while
+} # exec_file
+
+sub slave {
+    my $engine = shift;
+    my $files  = shift || [];
+    
+    foreach my $fl (@$files) {
+        if (ref($fl) eq 'GLOB') {
+            exec_file($engine, $fl);
+            next;
+        }
+
+        open(my $fh, '<', $fl) or die "$OS_ERROR";
+
+        eval {
+            exec_file($engine, $fh);
+        };
+        close($fh);
+
+        if ($EVAL_ERROR) {
+            die "$EVAL_ERROR";
+        }
+    } # foreach
+} # slave
+
+sub prompt {
+    my $engine = shift;
+    return;
+} # prompt
+
+### main
+my ($args, $options) = get_opts(\@ARGV);
+
+QBox::Stub::set_stub(sub {
+    my ($data, $title, $context) = @_;
+
+    # may echo context
+    if ($debug) {
+        my $type = ref($$context);
+        if ($type eq 'HASH' or $type eq 'ARRAY') {
+            printf STDERR "${title}=%s\n", fmt_json($$context);
+        }
+        else {
+            print STDERR "${title}=[$${context}]\n";
+        }
+    }
+
+    return 1;
+});
+
+eval {
+    $slave_mgr = QBox::Tools::SlaveManager->new({ 'max_count' => $parallel });
+
+    my $engine = QBox::Tools::Engine->new();
+
+    if (scalar(@{$options->{cmd_files}}) > 0) {
+        slave($engine, $options->{cmd_files});
+    }
+
+    my $cmd = $args->[0] || '';
+    if ($cmd =~ m/^\w+$/) {
+        oneshot($engine, "@$args", $args);
+    }
+
+    if (not -t STDIN) {
+        if (not eof(STDIN)) {
+            slave($engine, [\*STDIN]);
+        }
+
+        if ($prompt) {
+            prompt($engine);
+        }
+    }
+    else {
+        prompt($engine);
+    }
+};
+
+if ($EVAL_ERROR) {
+    print "$EVAL_ERROR\n";
+    exit(1);
+}

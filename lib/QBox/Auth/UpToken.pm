@@ -79,9 +79,11 @@ sub gen_headers {
     my $self   = shift;
 
     my $uptoken = qbox_auth_make_uptoken($self->{acs_key}, $self->{scr_key}, $self->{policy});
-    my $header  = "Authorization: UpToken ${uptoken}";
+    my $headers = {
+        "Authorization" => "UpToken ${uptoken}",
+    };
 
-    return [$header];
+    return $headers;
 } # gen_headers
 
 1;

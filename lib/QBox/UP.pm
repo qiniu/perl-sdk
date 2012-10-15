@@ -19,6 +19,11 @@ use QBox::Config;
 use QBox::Client;
 use QBox::Misc;
 
+use constant API_MKBLOCK  => 'up.mkblock';
+use constant API_BLOCKPUT => 'up.blockput';
+use constant API_MKFILE   => 'up.mkfile';
+use constant API_QUERY    => 'up.query';
+
 our @ISA = qw(Exporter);
 our @EXPORT = qw(
     qbox_up_new_progress
@@ -58,9 +63,9 @@ sub qbox_up_mkfile {
     return &mkfile;
 } # qbox_up_mkfile
 
-sub qbox_up_put {
-    return &put;
-} # qbox_up_put
+sub qbox_up_put_blocks_one_by_one {
+    return &put_blocks_one_by_one;
+} # qbox_up_put_blocks_one_by_one
 
 ### package functions
 sub reform_checksums {
@@ -80,10 +85,11 @@ my $qbox_up_chunk_put = sub {
     my $body     = shift;
     my $body_len = shift;
     my $url      = shift;
+    my $opts     = shift;
 
     my ($body_data, $byes) = $body->{read}->($body_len, $body->{uservar});
     $url .= '/mimeType/' . $encoded_mime_type;
-    my ($ret, $err) = $self->{client}->call_with_buffer($url, $body_data, $body_len);
+    my ($ret, $err) = $self->{client}->call_with_buffer($url, $body_data, $body_len, $opts);
 
     if ($err->{code} != 200) {
         return undef, $err;
@@ -92,7 +98,7 @@ my $qbox_up_chunk_put = sub {
     my $chunk_crc32 = crc32($body_data);
     if ($chunk_crc32 != $ret->{crc32}) {
         $ret            = undef;
-        $err->{code}    = 400;
+        $err->{code}    = 499;
         $err->{message} = 'Failed in verifying chunk CRC32';
     }
 
@@ -113,10 +119,11 @@ sub new_progress {
         push @{$prog->{checksums}}, { value => undef };
         push @{$prog->{progs}}, {};
 
-        $prog->{progs}[$i]{ctx}      = undef;
-        $prog->{progs}[$i]{offset}   = 0;
-        $prog->{progs}[$i]{err_code} = 0;
+        $prog->{progs}[$i]{ctx}       = undef;
+        $prog->{progs}[$i]{offset}    = 0;
+        $prog->{progs}[$i]{err_code}  = 0;
         $prog->{progs}[$i]{rest_size} = ($rest > QBOX_UP_BLOCK_SIZE) ? QBOX_UP_BLOCK_SIZE : $rest;
+        $prog->{progs}[$i]{blk_size}  = $prog->{progs}[$i]{rest_size};
 
         $rest -= $prog->{progs}[$i]{rest_size};
     } # for
@@ -129,7 +136,7 @@ sub new {
     my $client = shift;
     my $hosts  = shift || {};
 
-    $hosts->{up_host} ||= QBOX_UP_HOST;
+    $hosts->{up_host} ||= QBox::Config::QBOX_UP_HOST;
 
     my $self = {
         client => $client,
@@ -139,24 +146,25 @@ sub new {
 } # new
 
 sub mkblock {
-    my $self     = shift;
-    my $blk_size = shift;
-    my $body     = shift;
-    my $body_len = shift;
+    my $self = shift;
+    my ($blk_size, $body, $body_len, $opts) =
+        qbox_extract_args([qw{blk_size body body_len}], @_);
 
+    $opts ||= {};
+    $opts->{_api} = API_MKBLOCK;
     my $url = "$self->{hosts}{up_host}/mkblk/${blk_size}";
-    return $qbox_up_chunk_put->($self, $body, $body_len, $url);
+    return $qbox_up_chunk_put->($self, $body, $body_len, $url, $opts);
 } # mkblock
 
 sub blockput {
-    my $self     = shift;
-    my $ctx      = shift;
-    my $offset   = shift;
-    my $body     = shift;
-    my $body_len = shift;
+    my $self = shift;
+    my ($ctx, $offset, $body, $body_len, $opts) =
+        qbox_extract_args([qw{ctx offset body body_len}], @_);
 
+    $opts ||= {};
+    $opts->{_api} = API_BLOCKPUT;
     my $url = "$self->{hosts}{up_host}/bput/${ctx}/${offset}";
-    return $qbox_up_chunk_put->($self, $body, $body_len, $url);
+    return $qbox_up_chunk_put->($self, $body, $body_len, $url, $opts);
 } # blockput
 
 my $read_part = sub {
@@ -174,25 +182,20 @@ my $read_part = sub {
 };
 
 my $qbox_up_try_put = sub {
-    my $self          = shift;
-    my $action        = shift;
-    my $body          = shift;
-    my $blk_index     = shift;
-    my $blk_size      = shift;
-    my $chk_size      = shift;
-    my $retry_times   = shift;
-    my $blk_prog      = shift;
-    my $chk_notify    = shift;
-    my $notify_params = shift;
+    my $self = shift;
+    my ($action, $body, $blk_index, $blk_size, $chk_size,
+        $retry_times, $blk_prog, $chk_notify, $notify_params, $opts) =
+        qbox_extract_args([qw{action body blk_index blk_size chk_size
+                              retry_times blk_prog chk_notify notify_params}], @_);
 
     my $ret = undef;
     my $err = {};
     my $keep_going = 1;
     my $body_len = ($blk_prog->{rest_size} > $chk_size) ? $chk_size : $blk_prog->{rest_size};
-    $body->{offset} = ($blk_index * $blk_size) + $blk_prog->{offset};
+    $body->{offset} = ($blk_index * QBox::Config::QBOX_UP_BLOCK_SIZE) + $blk_prog->{offset};
 
     for (my $i = 0; $i <= $retry_times; ++$i) {
-        ($ret, $err) = $action->($body, $body_len);
+        ($ret, $err) = $action->($body, $body_len, $opts);
 
         if ($err->{code} == 200) {
             $blk_prog->{ctx}        = $ret->{ctx};
@@ -222,10 +225,10 @@ my $qbox_up_try_put = sub {
 };
 
 sub resumable_blockput {
-    my $self      = shift;
-    my $reader_at = shift;
-
-    my ($blk_index, $blk_size, undef, undef, $blk_prog) = @_;
+    my $self = shift;
+    my ($reader_at, $blk_index, $blk_size, undef, undef, $blk_prog) =
+        qbox_extract_args([qw{reader_at blk_index blk_size chk_size retry_times blk_prog}], @_);
+    shift @_;
 
     my $body = { read => $read_part, reader_at => $reader_at };
     $body->{uservar} = $body;
@@ -234,7 +237,7 @@ sub resumable_blockput {
     my $ret = undef;
     my $err = undef;
 
-    if ($blk_prog->{rest_size} == $blk_size) {
+    if ($blk_prog->{offset} == 0) {
         ($ret, $err, $keep_going) = $qbox_up_try_put->(
             $self,
             sub { return mkblock($self, $blk_size, @_); },
@@ -266,46 +269,88 @@ sub resumable_blockput {
     return $ret, $err;
 } # resumable_blockput
 
-sub mkfile {
-    my $self            = shift;
-    my $cmd             = shift;
-    my $entry           = shift;
-    my $mime_type       = shift || 'application/octet-stream';
-    my $fsize           = shift;
-    my $params          = shift;
-    my $callback_params = shift;
-    my $checksums       = shift;
-    my $blk_count       = shift;
+sub mkfile_by_sha1 {
+    my $self = shift;
+    my ($cmd, $bucket, $key, $mime_type, $fsize,
+        $params, $callback_params, $checksums, $blk_count, $opts) =
+        qbox_extract_args([qw{cmd bucket key mime_type fsize
+                              params callback_params checksums blk_count}], @_);
 
+    return undef, { code => 499, message => 'Invalid bucket' } if (not defined($bucket));
+    return undef, { code => 499, message => 'Invalid key' } if (not defined($key));
+
+    $bucket = "$bucket";
+    $key    = "$key";
+
+    my $entry = qbox_make_entry($bucket, $key);
     my @args = (
         $self->{hosts}{up_host},
-        $cmd    => qbox_base64_encode_urlsafe($entry),
-        'fsize' => $fsize,
+        $cmd    => qbox_base64_encode_urlsafe("$entry"),
+        'fsize' => "$fsize",
     );
 
-    if ($params and $params ne q{}) {
-        push @args, $params;
+    if (defined($params) and "$params" ne q{}) {
+        push @args, "$params";
     }
 
+    $mime_type = defined($mime_type) ? "$mime_type" : q{application/octet-stream};
     push @args, 'mimeType', qbox_base64_encode_urlsafe($mime_type);
 
-    if ($callback_params and $callback_params ne q{}) {
-        push @args, 'params', $callback_params;
+    if (defined($callback_params) and "$callback_params" ne q{}) {
+        push @args, 'params', qbox_base64_encode_urlsafe("$callback_params");
     }
 
+    $opts ||= {};
+    $opts->{_api} = API_MKFILE;
     my $url = join('/', @args);
     my ($cksum_buff, $cksum_size) = reform_checksums($checksums);
-    return $self->{client}->call_with_buffer($url, $cksum_buff, $cksum_size);
+    return $self->{client}->call_with_buffer($url, $cksum_buff, $cksum_size, $opts);
+} # mkfile_by_sha1
+
+sub mkfile {
+    my $self = shift;
+    my ($cmd, $bucket, $key, $mime_type, $fsize,
+        $params, $callback_params, $prog, $opts) =
+        qbox_extract_args([qw{cmd bucket key mime_type fsize
+                              params callback_params prog}], @_);
+
+    return undef, { code => 499, message => 'Invalid bucket' } if (not defined($bucket));
+    return undef, { code => 499, message => 'Invalid key' } if (not defined($key));
+
+    $bucket = "$bucket";
+    $key    = "$key";
+
+    my $entry = qbox_make_entry($bucket, $key);
+    my @args = (
+        $self->{hosts}{up_host},
+        $cmd    => qbox_base64_encode_urlsafe("$entry"),
+        'fsize' => "$fsize",
+    );
+
+    if (defined($params) and "$params" ne q{}) {
+        push @args, "$params";
+    }
+
+    $mime_type = defined($mime_type) ? "$mime_type" : q{application/octet-stream};
+    push @args, 'mimeType', qbox_base64_encode_urlsafe($mime_type);
+
+    if (defined($callback_params) and "$callback_params" ne q{}) {
+        push @args, 'params', qbox_base64_encode_urlsafe("$callback_params");
+    }
+
+    $opts ||= {};
+    $opts->{_api} = API_MKFILE;
+    $opts->{_headers}{'Content-Type'} = 'text/plain';
+    my $url = join('/', @args);
+    my $ctx_buff = join ",", map { $_->{ctx} } @{$prog->{progs}};
+    my $ctx_size = length($ctx_buff);
+    return $self->{client}->call_with_buffer($url, $ctx_buff, $ctx_size, $opts);
 } # mkfile
 
-sub put {
-    my $self          = shift;
-    my $reader_at     = shift;
-    my $fsize         = shift;
-    my $prog          = shift;
-    my $blk_notify    = shift;
-    my $chk_notify    = shift;
-    my $notify_params = shift;
+sub put_blocks_one_by_one {
+    my $self = shift;
+    my ($reader_at, $fsize, $prog, $blk_notify, $chk_notify, $notify_params, $opts) =
+        qbox_extract_args([qw{reader_at fsize prog blk_notify chk_notify notify_params}], @_);
 
     # Find next block
     my $blk_index = 0;
@@ -319,7 +364,7 @@ sub put {
 
     my $keep_going = 1;
     my $ret = undef;
-    my $err = {};
+    my $err = undef;
     for (; $blk_index < $prog->{blk_count}; ++$blk_index) {
         ($ret, $err) = $self->resumable_blockput(
             $reader_at,
@@ -329,12 +374,10 @@ sub put {
             QBOX_PUT_RETRY_TIMES,
             $prog->{progs}[$blk_index],
             $chk_notify,
-            $notify_params
+            $notify_params,
+            $opts
         );
-
-        if ($err->{code} != 200) {
-            return $ret, $err;
-        }
+        return $ret, $err if ($err->{code} != 200);
 
         $prog->{checksums}[$blk_index]{value} = $ret->{checksum};
 
@@ -348,24 +391,19 @@ sub put {
         }
     } # for
 
-    $err->{code} = 200;
-    $err->{message} = 'OK';
-    return $ret, $err;
-} # put
+    return $ret, { code => 200, message => 'OK' };
+} # put_blocks_one_by_one
 
 sub query {
-    my $self      = shift;
-    my $checksums = shift;
+    my $self = shift;
+    my ($checksums, $opts) = qbox_extract_args([qw{checksums}], @_);
 
+    $opts ||= {};
+    $opts->{_api}         = API_QUERY;
+    $opts->{_as_verbatim} = 1;
     my $url = "$self->{hosts}{up_host}/query";
     my ($cksum_buff, $cksum_size) = reform_checksums($checksums, q{grep valid});
-    my ($ret, $err) = $self->{client}->call_with_buffer(
-        $url,
-        $cksum_buff,
-        $cksum_size,
-        { as_verbatim => 1 }
-    );
-    return $ret, $err;
+    return $self->{client}->call_with_buffer($url, $cksum_buff, $cksum_size, $opts);
 } # query
 
 1;
