@@ -366,6 +366,44 @@ sub drop {
     return $self->{client}->call($url, $opts);
 } # drop
 
+sub upload {
+    my $self = shift;
+    my ($bucket, $key, $file, $mime_type, $custom_meta, $callback_params, $uptoken, $opts) =
+        qbox_extract_args([qw{bucket key file mime_type custom_meta callback_params uptoken}], @_);
+
+    $bucket = "$bucket";
+    $key    = "$key";
+
+    my $encoded_entry = qbox_base64_encode_urlsafe(qbox_make_entry($bucket, $key)); 
+
+    my @action = [
+        '/rs-put',
+        $encoded_entry,
+        'mime_type' => defined($mime_type) ? "$mime_type" : q{application/octet-stream},
+    ];
+
+    if (defined($custom_meta) and "$custom_meta" ne q{}) {
+        $custom_meta = qbox_base64_encode_urlsafe("$custom_meta");
+        push @action, 'meta', $custom_meta;
+    }
+
+    my $url = "$self->{hosts}{up_host}/upload";
+    my $body = {
+        'action' => join(q{/}, @action),
+        'auth'   => "$uptoken",
+    };
+
+    my $file_body = {
+        'file'   => "$file",
+    };
+
+    if (defined($callback_params)) {
+        $body->{params} = "$callback_params";
+    }
+
+    return $self->{client}->call_with_multipart_form($url, [$body, $file_body], undef, $opts);
+} # upload
+
 1;
 
 __END__

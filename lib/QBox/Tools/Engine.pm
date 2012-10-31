@@ -93,9 +93,13 @@ my $rs_pickup_args = sub {
         params          => $pickup_param->($args->{params}),
         callback_params => $pickup_param->($args->{callback_params}),
 
+        expires_in      => $pickup_param->($args->{expires_in}),
+
         attr            => $pickup_param->($args->{attr}),
         base            => $pickup_param->($args->{base}),
         domain          => $pickup_param->($args->{domain}),
+
+        uptoken         => $pickup_param->($args->{uptoken}),
     };
 
     $rs_args->{key} ||= (defined($rs_args->{file})) ? basename($rs_args->{file}) : undef;
@@ -142,6 +146,16 @@ sub put_auth_file {
     $curl->setopt(CURLOPT_HTTPPOST, $form);
     return qbox_curl_call_core($curl);
 } # put_auth_file
+
+sub upload_file {
+    my $self = shift;
+    my $args = shift;
+    my $opts = shift || {};
+
+    my ($new_args, $new_opts) = $prepare_args->($self, $args, $opts);
+    $new_args->{uptoken} = $self->{client}{auth}->gen_uptoken();
+    return $self->upload($new_args, $new_opts);
+} # upload_file
 
 ### up methods
 my $prepare_for_resumable_put = sub {
@@ -401,9 +415,11 @@ my %methods = (
     'publish'       => $rs_exec,
     'unpublish'     => $rs_exec,
     'put_auth'      => $rs_exec,
+    'put_auth_ex'   => $rs_exec,
     'put_file'      => $rs_exec,
     'delete'        => $rs_exec,
     'drop'          => $rs_exec,
+    'upload'        => $rs_exec,
 
     'query'         => $up_exec,
     'mkblock'       => $up_exec,
@@ -486,11 +502,13 @@ sub new {
             'client_id'     => undef,
             'client_secret' => undef,
 
-            'username'   => undef,
-            'password'   => undef,
+            'username'      => undef,
+            'password'      => undef,
 
-            'access_key' => undef,
-            'secret_key' => undef,
+            'access_key'    => undef,
+            'secret_key'    => undef,
+
+            'policy'        => undef,
         },
         'out_fh' => undef,
     };
