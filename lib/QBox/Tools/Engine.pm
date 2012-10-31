@@ -137,12 +137,23 @@ sub put_auth_file {
         file => $rs_args->{file},
     };
 
+    my $url = $ret->{url};
+    my $new_host = $new_opts->{_host};
+    if (defined($new_host) and "$new_host" ne q{}) {
+        $url =~ m,://([^/]+),;
+        my $old_host = $1;
+
+        $new_opts->{_headers} ||= {};
+        if (not defined($new_opts->{_headers}{Host})) {
+            $new_opts->{_headers}{Host} = $old_host;
+        }
+
+        $url =~ s,://(?:[^/]+)/,://${new_host}/,;
+    }
+
+    $new_opts->{_api} = 'rs.put-auth-file';
     my $form = qbox_curl_make_multipart_form($body, $file_body);
-    my $curl = qbox_curl_call_pre(
-        $ret->{url},
-        undef,
-        { 'api' => 'rs.put-auth-file' }
-    );
+    my $curl = qbox_curl_call_pre($url, undef, $new_opts);
     $curl->setopt(CURLOPT_HTTPPOST, $form);
     return qbox_curl_call_core($curl);
 } # put_auth_file
