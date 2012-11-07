@@ -17,10 +17,11 @@ use JSON qw();   # external library
 
 my %fields = (
     scope            => 1,
+    deadline         => 1,
     callbackUrl      => 1,
     callbackBodyType => 1,
     customer         => 1,
-    deadline         => 1,
+    escape           => 1,
 );
 
 our $AUTOLOAD;
@@ -29,10 +30,10 @@ our $AUTOLOAD;
 sub new {
     my $class = shift || __PACKAGE__;
     my $args  = shift || {};
-    my $self  = bless { fields => $args }, $class;
+    my $self  = bless { fields => {} }, $class;
 
     foreach my $key (keys(%$args)) {
-        if ($fields{$key}) {
+        if ($fields{$key} and defined($args->{$key})) {
             $self->$key($args->{$key});
         }
     } # foreach

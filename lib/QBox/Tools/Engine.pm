@@ -519,7 +519,14 @@ sub new {
             'access_key'    => undef,
             'secret_key'    => undef,
 
-            'policy'        => undef,
+            'policy'        => {
+                'scope'            => undef,
+                'deadline'         => undef,
+                'callbackUrl'      => undef,
+                'callbackBodyType' => undef,
+                'customer'         => undef,
+                'escape'           => undef,
+            },
         },
         'out_fh' => undef,
     };
