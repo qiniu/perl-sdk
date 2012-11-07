@@ -519,14 +519,7 @@ sub new {
             'access_key'    => undef,
             'secret_key'    => undef,
 
-            'policy'        => {
-                'scope'            => undef,
-                'deadline'         => undef,
-                'callbackUrl'      => undef,
-                'callbackBodyType' => undef,
-                'customer'         => undef,
-                'escape'           => undef,
-            },
+            'policy'        => undef,
         },
         'out_fh' => undef,
     };
@@ -586,6 +579,10 @@ sub set_auth {
 
     if (ref($auth) eq 'HASH') {
         qbox_hash_merge($self->{auth}, $auth, 'TO');
+
+        if (defined($auth->{policy})) {
+            qbox_hash_merge($self->{auth}{policy}, $auth->{policy}, 'FROM');
+        }
     }
 
     return {}, { 'code' => 200, 'message' => 'Auth info set'};
