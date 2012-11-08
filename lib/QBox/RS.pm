@@ -376,11 +376,11 @@ sub upload {
 
     my $encoded_entry = qbox_base64_encode_urlsafe(qbox_make_entry($bucket, $key)); 
 
-    my @action = [
+    my @action = (
         '/rs-put',
         $encoded_entry,
         'mime_type' => defined($mime_type) ? "$mime_type" : q{application/octet-stream},
-    ];
+    );
 
     if (defined($custom_meta) and "$custom_meta" ne q{}) {
         $custom_meta = qbox_base64_encode_urlsafe("$custom_meta");
