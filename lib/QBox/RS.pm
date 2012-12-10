@@ -20,6 +20,7 @@ use QBox::Config;
 use QBox::Client;
 use QBox::Reader::File;
 use QBox::UP;
+use QBox::Stub;
 use QBox::Misc;
 
 use constant API_GET         => 'rs.get';
@@ -374,22 +375,26 @@ sub upload {
     $bucket = "$bucket";
     $key    = "$key";
 
+    $mime_type = defined($mime_type) ? "$mime_type" : q{application/octet-stream};
     my $encoded_entry = qbox_base64_encode_urlsafe(qbox_make_entry($bucket, $key)); 
 
-    my @action = [
+    my @action = (
         '/rs-put',
         $encoded_entry,
-        'mime_type' => defined($mime_type) ? "$mime_type" : q{application/octet-stream},
-    ];
+        'mime_type' => qbox_base64_encode_urlsafe($mime_type),
+    );
 
     if (defined($custom_meta) and "$custom_meta" ne q{}) {
         $custom_meta = qbox_base64_encode_urlsafe("$custom_meta");
         push @action, 'meta', $custom_meta;
     }
 
+    my $action = qbox_url_append_params(join(q{/}, @action), $opts, '_action_params');
+    QBox::Stub::call_stub("rs.upload.action", \$action);
+
     my $url = "$self->{hosts}{up_host}/upload";
     my $body = {
-        'action' => join(q{/}, @action),
+        'action' => $action,
         'auth'   => "$uptoken",
     };
 
@@ -401,6 +406,7 @@ sub upload {
         $body->{params} = "$callback_params";
     }
 
+    $opts->{_api} = 'rs.upload';
     return $self->{client}->call_with_multipart_form($url, [$body, $file_body], undef, $opts);
 } # upload
 
