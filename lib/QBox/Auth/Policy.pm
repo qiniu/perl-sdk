@@ -16,12 +16,12 @@ use warnings;
 use JSON qw();   # external library
 
 my %fields = (
-    scope            => 1,
-    deadline         => 1,
-    callbackUrl      => 1,
-    callbackBodyType => 1,
-    customer         => 1,
-    escape           => 1,
+    scope            => undef,
+    deadline         => 3600,
+    callbackUrl      => undef,
+    callbackBodyType => undef,
+    customer         => undef,
+    escape           => 0,
 );
 
 our $AUTOLOAD;
@@ -32,10 +32,8 @@ sub new {
     my $args  = shift || {};
     my $self  = bless { fields => {} }, $class;
 
-    foreach my $key (keys(%$args)) {
-        if ($fields{$key} and defined($args->{$key})) {
-            $self->$key($args->{$key});
-        }
+    foreach my $key (keys(%fields)) {
+        $self->$key($args->{$key});
     } # foreach
 
     return $self;
