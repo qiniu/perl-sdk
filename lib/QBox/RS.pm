@@ -327,6 +327,7 @@ sub drop {
     my $self = shift;
     my ($bucket, $opts) = qbox_extract_args([qw{bucket}], @_);
 
+    return undef, { code => 699, message => 'Temporarily Unavailable' };
     return undef, { code => 499, message => 'Invalid bucket' } if (not defined($bucket));
 
     $bucket = "$bucket";
@@ -344,6 +345,7 @@ sub upload {
 
     $bucket = "$bucket";
     $key    = "$key";
+
     my $encoded_entry = qbox_base64_encode_urlsafe(qbox_make_entry($bucket, $key)); 
 
     $mime_type = defined($mime_type) ? "$mime_type" : q{application/octet-stream};
