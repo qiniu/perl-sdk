@@ -32,9 +32,8 @@ use constant API_UNPUBLISH   => 'rs.unpublish';
 use constant API_DELETE      => 'rs.delete';
 use constant API_DROP        => 'rs.drop';
 
-our @ISA = qw(Exporter);
-our @EXPORT = qw(
-    qbox_rs_init
+my @TRANSMIT = qw(
+    qbox_rs_new
 
     qbox_rs_get
     qbox_rs_get_if_not_modified
@@ -45,57 +44,28 @@ our @EXPORT = qw(
     qbox_rs_put_auth
     qbox_rs_put_auth_ex
 
+    qbox_rs_upload
+
     qbox_rs_stat
     qbox_rs_delete
     qbox_rs_drop
 );
 
-### procedures
-sub qbox_rs_init {
-    return &new;
-} # qbox_rs_init
+our @ISA = qw(Exporter);
+our @EXPORT = (
+    @TRANSMIT,
+);
 
-sub qbox_rs_get {
-    return &get;
-} # qbox_rs_get
+### for procedures
+no strict;
 
-sub qbox_rs_get_if_not_modified {
-    return &get_if_not_modified;
-} # qbox_rs_get_if_not_modified
+foreach my $sub_nm (@TRANSMIT) {
+    my $trans = $sub_nm;
+    $trans =~ s/^qbox_rs_//;
+    *{"QBox::RS::$sub_nm"} = sub { return &{*{"QBox::RS::$trans"}{CODE}} };
+} # foreach
 
-sub qbox_rs_put {
-    return &put;
-} # qbox_rs_put
-
-sub qbox_rs_put_file {
-    return &put_file;
-} # qbox_rs_put_file
-
-sub qbox_rs_put_auth {
-    return &put_auth;
-} # qbox_rs_put_auth
-
-sub qbox_rs_put_auth_ex {
-    return &put_auth_ex;
-} # qbox_rs_put_auth_ex
-
-sub qbox_rs_resumable_put {
-    return &resumable_put;
-} # qbox_rs_resumable_put
-
-sub qbox_rs_stat {
-    my $self = shift;
-    return &{$self->stat};
-} # qbox_rs_stat
-
-sub qbox_rs_delete {
-    my $self = shift;
-    return &{$self->delete};
-} # qbox_rs_delete
-
-sub qbox_rs_drop {
-    return &drop;
-} # qbox_rs_drop
+use strict;
 
 ### for OOP
 sub new {
@@ -370,18 +340,21 @@ sub drop {
 sub upload {
     my $self = shift;
     my ($bucket, $key, $file, $mime_type, $custom_meta, $callback_params, $uptoken, $opts) =
-        qbox_extract_args([qw{bucket key file mime_type custom_meta callback_params uptoken}], @_);
+        qbox_extract_args([qw(bucket key file mime_type custom_meta callback_params uptoken)], @_);
 
     $bucket = "$bucket";
     $key    = "$key";
+    my $encoded_entry = qbox_base64_encode_urlsafe(qbox_make_entry($bucket, $key)); 
 
     $mime_type = defined($mime_type) ? "$mime_type" : q{application/octet-stream};
-    my $encoded_entry = qbox_base64_encode_urlsafe(qbox_make_entry($bucket, $key)); 
+    my $encoded_mime_type = qbox_base64_encode_urlsafe($mime_type);
+
+    $uptoken = defined($uptoken) ? $uptoken : $self->{client}{auth}->gen_uptoken();
 
     my @action = (
         '/rs-put',
         $encoded_entry,
-        'mime_type' => qbox_base64_encode_urlsafe($mime_type),
+        'mime_type' => $encoded_mime_type,
     );
 
     if (defined($custom_meta) and "$custom_meta" ne q{}) {
@@ -394,7 +367,7 @@ sub upload {
 
     my $url = "$self->{hosts}{up_host}/upload";
     my $body = {
-        'action' => $action,
+        'action' => "$action",
         'auth'   => "$uptoken",
     };
 

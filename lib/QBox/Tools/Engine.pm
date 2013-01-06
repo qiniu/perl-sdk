@@ -158,16 +158,6 @@ sub put_auth_file {
     return qbox_curl_call_core($curl);
 } # put_auth_file
 
-sub upload_file {
-    my $self = shift;
-    my $args = shift;
-    my $opts = shift || {};
-
-    my ($new_args, $new_opts) = $prepare_args->($self, $args, $opts);
-    $new_args->{uptoken} = $self->{client}{auth}->gen_uptoken();
-    return $self->upload($new_args, $new_opts);
-} # upload_file
-
 ### up methods
 my $prepare_for_resumable_put = sub {
     my $self = shift;
