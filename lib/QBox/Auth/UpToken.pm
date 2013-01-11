@@ -72,15 +72,29 @@ sub new {
         scr_key => $secret_key,
         policy  => $policy,
     };
-    return bless $self, $class;
+
+    bless $self, $class;
+    $self->gen_uptoken($self->{policy});
+
+    return $self;
 } # new
 
-sub gen_headers {
+sub gen_uptoken {
     my $self   = shift;
+    my $policy = shift;
 
-    my $uptoken = qbox_auth_make_uptoken($self->{acs_key}, $self->{scr_key}, $self->{policy});
+    if (defined($policy)) {
+        $self->{uptoken} = qbox_auth_make_uptoken($self->{acs_key}, $self->{scr_key}, $policy);
+    }
+    return $self->{uptoken};
+} # get_uptoken
+
+sub gen_headers {
+    my $self = shift;
+
+    my $uptoken = $self->gen_uptoken(@_);
     my $headers = {
-        "Authorization" => "UpToken ${uptoken}",
+        "Authorization" => "UpToken $uptoken",
     };
 
     return $headers;

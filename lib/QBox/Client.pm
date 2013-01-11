@@ -182,16 +182,22 @@ sub call_with_multipart_form {
     my $body_len     = shift;
     my $opts         = shift;
 
-    if (ref($body) ne q{HASH}) {
-        return undef, { code => 499, message => 'Invalid form body' };
-    }
-
     my $headers = $qbox_client_gen_headers->($self, $url);
     $headers = qbox_curl_merge_headers($headers, $opts->{_headers});
 
     my $curl = qbox_curl_call_pre($url, $headers, $opts);
 
-    my $form = qbox_curl_make_multipart_form($body);
+    my $form = undef;
+    if (ref($body) eq 'HASH') {
+        $form = qbox_curl_make_multipart_form($body);
+    }
+    elsif (ref($body) eq 'ARRAY') {
+        $form = qbox_curl_make_multipart_form(@$body);
+    }
+    else {
+        return undef, { code => 499, message => 'Invalid form body' };
+    }
+
     $curl->setopt(CURLOPT_HTTPPOST, $form);
 
     return qbox_curl_call_core($curl, $opts);

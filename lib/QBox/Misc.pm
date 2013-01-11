@@ -30,6 +30,9 @@ our @EXPORT = qw(
 
     qbox_make_entry
     qbox_extract_args
+
+    qbox_url_gen_params
+    qbox_url_append_params
 );
 
 sub qbox_base64_encode {
@@ -128,6 +131,39 @@ sub qbox_json_load {
 
     return $json;
 } # qbox_json_load
+
+sub qbox_url_gen_params {
+    my $opts  = shift;
+    my $field = shift || q{_url_params};
+
+    if (ref($opts->{$field}) ne q{ARRAY}) {
+        return q{};
+    }
+    
+    my @params = map {
+        my $t = "";
+        if ($_->[0]) {
+            $t .= "$_->[0]/";
+        }
+
+        $t .= $_->[2] ? qbox_base64_encode_urlsafe("$_->[1]") : "$_->[1]";
+    } @{$opts->{$field}};
+
+    my $params = join(q{/}, @params);
+    return $params;
+} # qbox_url_gen_params
+
+sub qbox_url_append_params {
+    my $url   = shift;
+    my $opts  = shift;
+    my $field = shift;
+
+    my $params = qbox_url_gen_params($opts, $field);
+    if ($params) {
+        $url = "$url/$params";
+    }
+    return $url;
+} # qbox_url_append_params
 
 1;
 
