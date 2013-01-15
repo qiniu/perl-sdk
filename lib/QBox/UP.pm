@@ -158,12 +158,16 @@ sub mkblock {
 
 sub blockput {
     my $self = shift;
-    my ($ctx, $offset, $body, $body_len, $opts) =
-        qbox_extract_args([qw{ctx offset body body_len}], @_);
+    my ($up_host, $ctx, $offset, $body, $body_len, $opts) =
+        qbox_extract_args([qw{up_host ctx offset body body_len}], @_);
 
     $opts ||= {};
     $opts->{_api} = API_BLOCKPUT;
-    my $url = "$self->{hosts}{up_host}/bput/${ctx}/${offset}";
+
+    # use specific up_host returned from the up host.
+    $up_host ||= $self->{hosts}{up_host};
+
+    my $url = "${up_host}/bput/${ctx}/${offset}";
     return $qbox_up_chunk_put->($self, $body, $body_len, $url, $opts);
 } # blockput
 
@@ -254,7 +258,7 @@ sub resumable_blockput {
     while ($blk_prog->{rest_size} > 0) {
         ($ret, $err, $keep_going) = $qbox_up_try_put->(
             $self,
-            sub { return blockput($self, $blk_prog->{ctx}, $blk_prog->{offset}, @_); },
+            sub { return blockput($self, $ret->{host}, $blk_prog->{ctx}, $blk_prog->{offset}, @_); },
             $body,
             @_
         );

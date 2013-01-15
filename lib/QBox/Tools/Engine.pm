@@ -93,9 +93,13 @@ my $rs_pickup_args = sub {
         params          => $pickup_param->($args->{params}),
         callback_params => $pickup_param->($args->{callback_params}),
 
+        expires_in      => $pickup_param->($args->{expires_in}),
+
         attr            => $pickup_param->($args->{attr}),
         base            => $pickup_param->($args->{base}),
         domain          => $pickup_param->($args->{domain}),
+
+        uptoken         => $pickup_param->($args->{uptoken}),
     };
 
     $rs_args->{key} ||= (defined($rs_args->{file})) ? basename($rs_args->{file}) : undef;
@@ -133,12 +137,23 @@ sub put_auth_file {
         file => $rs_args->{file},
     };
 
+    my $url = $ret->{url};
+    my $new_host = $new_opts->{_host};
+    if (defined($new_host) and "$new_host" ne q{}) {
+        $url =~ m,://([^/]+),;
+        my $old_host = $1;
+
+        $new_opts->{_headers} ||= {};
+        if (not defined($new_opts->{_headers}{Host})) {
+            $new_opts->{_headers}{Host} = $old_host;
+        }
+
+        $url =~ s,://(?:[^/]+)/,://${new_host}/,;
+    }
+
+    $new_opts->{_api} = 'rs.put-auth-file';
     my $form = qbox_curl_make_multipart_form($body, $file_body);
-    my $curl = qbox_curl_call_pre(
-        $ret->{url},
-        undef,
-        { 'api' => 'rs.put-auth-file' }
-    );
+    my $curl = qbox_curl_call_pre($url, undef, $new_opts);
     $curl->setopt(CURLOPT_HTTPPOST, $form);
     return qbox_curl_call_core($curl);
 } # put_auth_file
@@ -401,9 +416,11 @@ my %methods = (
     'publish'       => $rs_exec,
     'unpublish'     => $rs_exec,
     'put_auth'      => $rs_exec,
+    'put_auth_ex'   => $rs_exec,
     'put_file'      => $rs_exec,
     'delete'        => $rs_exec,
     'drop'          => $rs_exec,
+    'upload'        => $rs_exec,
 
     'query'         => $up_exec,
     'mkblock'       => $up_exec,
@@ -486,11 +503,13 @@ sub new {
             'client_id'     => undef,
             'client_secret' => undef,
 
-            'username'   => undef,
-            'password'   => undef,
+            'username'      => undef,
+            'password'      => undef,
 
-            'access_key' => undef,
-            'secret_key' => undef,
+            'access_key'    => undef,
+            'secret_key'    => undef,
+
+            'policy'        => undef,
         },
         'out_fh' => undef,
     };
@@ -550,6 +569,10 @@ sub set_auth {
 
     if (ref($auth) eq 'HASH') {
         qbox_hash_merge($self->{auth}, $auth, 'TO');
+
+        if (defined($auth->{policy})) {
+            qbox_hash_merge($self->{auth}{policy}, $auth->{policy}, 'FROM');
+        }
     }
 
     return {}, { 'code' => 200, 'message' => 'Auth info set'};
